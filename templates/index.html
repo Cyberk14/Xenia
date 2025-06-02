@@ -1,0 +1,562 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XeniaV2 Trading System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-light: #e6f7ff;
+            --primary: #b3e0ff;
+            --primary-dark: #4da6ff;
+        }
+        body {
+            background-color: #f8fbff;
+            color: #333;
+        }
+        .card {
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 123, 255, 0.1);
+        }
+        .card-header {
+            background-color: var(--primary-light);
+            border-bottom: 1px solid var(--primary);
+        }
+        .btn-primary {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+        }
+        .profit {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .loss {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .signal-card {
+            transition: all 0.3s ease;
+        }
+        .signal-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 123, 255, 0.2);
+        }
+        .nav-tabs .nav-link.active {
+            background-color: var(--primary-light);
+            border-color: var(--primary) var(--primary) transparent;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="text-center mb-4">
+            <h1 class="display-4">XeniaV2</h1>
+            <p class="lead">AI-powered stock trading platform</p>
+        </div>
+
+        <!-- Configuration Panel -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form id="configForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Stock Symbols (comma separated)</label>
+                            <input type="text" class="form-control" name="symbols" placeholder="Any stock symbol in (TSLA, MSFT)" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Starting Balance ($)</label>
+                            <input type="number" class="form-control" name="balance" value="10000" min="100" step="100" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Transaction Cost (%)</label>
+                            <input type="number" class="form-control" name="transaction_cost" value="0.2" min="0" max="10" step="0.1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" name="start_date" value="2023-01-01" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">End Date</label>
+                            <input type="date" class="form-control" name="end_date" value="2024-01-01" required>
+                        </div>
+                        <div class="col-12">
+                            <button type="button" id="runBacktest" class="btn btn-primary w-100 py-3">
+                                Generate Signals
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Backtest Results -->
+        <div class="card mb-4" id="resultsSection" style="display:none;">
+            <div class="card-header">
+                <h5 class="mb-0">Backtest Results</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body text-center">
+                                <h6>Initial Balance</h6>
+                                <h3 id="initialBalance">$10,000.00</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body text-center">
+                                <h6>Final Value</h6>
+                                <h3 id="finalBalance">$12,345.67</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body text-center">
+                                <h6>Total Return</h6>
+                                <h3 id="totalReturn" class="profit">+23.46%</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body text-center">
+                                <h6>Trades Executed</h6>
+                                <h3 id="tradeCount">42</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Signals -->
+        <div class="card mb-4" id="signalsSection" style="display:none;">
+            <div class="card-header">
+                <h5 class="mb-0">Current Trading Signals</h5>
+            </div>
+            <div class="card-body">
+                <div class="row" id="signalsContainer">
+                    <!-- Signals will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="card mb-4" id="chartsSection" style="display:none;">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="chartTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="price-tab" data-bs-toggle="tab" 
+                                data-bs-target="#priceChart" type="button" role="tab">
+                            Price & Indicators
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="rsi-tab" data-bs-toggle="tab" 
+                                data-bs-target="#rsiChart" type="button" role="tab">
+                            RSI
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="macd-tab" data-bs-toggle="tab" 
+                                data-bs-target="#macdChart" type="button" role="tab">
+                            MACD
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="chartTabsContent">
+                    <div class="tab-pane fade show active" id="priceChart" role="tabpanel">
+                        <canvas id="priceChartCanvas" height="400"></canvas>
+                    </div>
+                    <div class="tab-pane fade" id="rsiChart" role="tabpanel">
+                        <canvas id="rsiChartCanvas" height="400"></canvas>
+                    </div>
+                    <div class="tab-pane fade" id="macdChart" role="tabpanel">
+                        <canvas id="macdChartCanvas" height="400"></canvas>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <select class="form-select" id="symbolSelector">
+                        <!-- Symbols will be populated here -->
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade History -->
+        <div class="card" id="tradesSection" style="display:none;">
+            <div class="card-header">
+                <h5 class="mb-0">Trade History</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Symbol</th>
+                                <th>Action</th>
+                                <th>Price</th>
+                                <th>Shares</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradesTable">
+                            <!-- Trades will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // DOM Elements
+        const runBtn = document.getElementById('runBacktest');
+        const resultsSection = document.getElementById('resultsSection');
+        const signalsSection = document.getElementById('signalsSection');
+        const chartsSection = document.getElementById('chartsSection');
+        const tradesSection = document.getElementById('tradesSection');
+        const symbolSelector = document.getElementById('symbolSelector');
+        const tradesTable = document.getElementById('tradesTable');
+        const signalsContainer = document.getElementById('signalsContainer');
+        
+        // Chart instances
+        let priceChart = null;
+        let rsiChart = null;
+        let macdChart = null;
+        // Ensure Chart.js is loadTradesed before using it
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js is not loaded. Please check the script tag.');
+        }
+        // Ensure Bootstrap is loadTradesed before using initialization
+        if (typeof bootstrap === 'undefined') {
+            console.error('Bootstrap is not loaded. Please check the script tag.');
+        }
+        // Ensure DOMContentLoaded is used to wait for the document to be fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initialize);
+        } else {
+            initialize();
+        }
+        // Function to initialize the page
+        function initialize() {
+            // Set up event listeners and initial state
+            runBtn.addEventListener('click', runBacktest);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set default dates
+            const today = new Date().toISOString().split('T')[0];
+            const lastYear = new Date();
+            lastYear.setFullYear(lastYear.getFullYear() - 1);
+            document.querySelector('input[name="end_date"]').value = today;
+            document.querySelector('input[name="start_date"]').value = lastYear.toISOString().split('T')[0];
+        });
+        
+        // Run backtest
+        runBtn.addEventListener('click', async () => {
+            runBtn.disabled = true;
+            runBtn.textContent = 'getting backtest...';
+            
+            // Get form data
+            const formData = new FormData(document.getElementById('configForm'));
+            const params = Object.fromEntries(formData.entries());
+            
+            // Start backtest
+            await fetch('/run_backtest', {
+                method: 'POST',
+                body: new URLSearchParams(params),
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+            });
+
+            runBtn.textContent = 'Generating signal(s)...';
+            
+            // Check status periodically
+            const checkStatus = setInterval(async () => {
+                const response = await fetch('/backtest_status');
+                const data = await response.json();
+                console.log(data.status);
+                
+                if (data.status === 'completed') {
+                    clearInterval(checkStatus);
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Generate More Signals...';
+                    
+                    // Update results
+                    document.getElementById('initialBalance').textContent = 
+                        `$ ${data.results.initial.toLocaleString('en-US', {maximumFractionDigits:2})}`;
+                    document.getElementById('finalBalance').textContent = 
+                        `$ ${data.results.final.toLocaleString('en-US', {maximumFractionDigits:2})}`;
+                    
+                    const returnPct = data.results.return.toFixed(2);
+                    const returnEl = document.getElementById('totalReturn');
+                    returnEl.textContent = `${returnPct > 0 ? '+' : ''}${returnPct}%`;
+                    returnEl.className = returnPct >= 0 ? 'profit' : 'loss';
+                    
+                    document.getElementById('tradeCount').textContent = data.results.trades;
+                    
+                    // Show sections
+                    resultsSection.style.display = 'block';
+                    signalsSection.style.display = 'block';
+                    chartsSection.style.display = 'block';
+                    tradesSection.style.display = 'block';
+                    
+                    // Load signals
+                    loadSignals();
+                    
+                    // Populate symbol selector
+                    const symbols = params.symbols.split(',');
+                    symbolSelector.innerHTML = symbols.map(s => 
+                        `<option value="${s.trim()}">${s.trim()}</option>`
+                    ).join('');
+                    
+                    // Load initial chart
+                    loadChartData(symbols[0].trim());
+                    
+                    // Load trades
+                    loadTrades();
+                }
+            }, 2000);
+        });
+        
+        // Symbol selection changed
+        symbolSelector.addEventListener('change', (e) => {
+            loadChartData(e.target.value);
+        });
+        
+        // Load trading signals
+        async function loadSignals() {
+            const response = await fetch('/get_signals');
+            const signals = await response.json();
+            
+            signalsContainer.innerHTML = '';
+            
+            for (const [symbol, data] of Object.entries(signals)) {
+                const signalClass = data.combined_signal > 0 ? 'bg-success' : 'bg-danger';
+                const signalText = data.combined_signal > 0 ? 'BUY' : 'SELL';
+                
+                signalsContainer.innerHTML += 
+                    `<div class="col-md-3 mb-3">
+                        <div class="card signal-card">
+                            <div class="card-body">
+                                <h5 class="card-title">${symbol}</h5>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="badge ${signalClass}">${signalText}</span>
+                                    <span class="text-muted">${data.date.split('T')[0]}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Price:</span>
+                                    <strong>$${data.price.toFixed(2)}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Signal Strength:</span>
+                                    <strong>${data.combined_signal.toFixed(3)}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Confidence:</span>
+                                    <strong>${(data.confidence * 100).toFixed(1)}%</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`
+                ;
+            }
+        }
+        
+        // Load trades
+        async function loadTrades() {
+            const response = await fetch('/get_trades');
+            const trades = await response.json();
+            
+            tradesTable.innerHTML = trades.map(trade => 
+                `<tr>
+                    <td>${trade.date}</td>
+                    <td>${trade.symbol}</td>
+                    <td>${trade.action}</td>
+                    <td>${trade.price}</td>
+                    <td>${trade.shares || '-'}</td>
+                    <td>${trade.signal || '-'}</td>
+                    <td>${trade.confidence}</td>
+                    <td class="${trade.pnl_class || ''}">${trade.pnl || '-'}</td>
+                </tr>`
+            ).join('');
+        }
+        
+        // Load chart data
+        async function loadChartData(symbol) {
+            const response = await fetch(`/get_chart_data/${symbol}`);
+            const data = await response.json();
+            
+            if (!data.dates || data.dates.length === 0) return;
+            
+            // Destroy existing charts if they exist
+            if (priceChart) priceChart.destroy();
+            if (rsiChart) rsiChart.destroy();
+            if (macdChart) macdChart.destroy();
+            
+            // Price chart
+            const priceCtx = document.getElementById('priceChartCanvas').getContext('2d');
+            priceChart = new Chart(priceCtx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [
+                        {
+                            label: 'Close Price',
+                            data: data.close,
+                            borderColor: '#4da6ff',
+                            backgroundColor: 'rgba(77, 166, 255, 0.1)',
+                            fill: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'SMA 20',
+                            data: data.sma20,
+                            borderColor: '#ff6384',
+                            borderDash: [5, 5],
+                            fill: false
+                        },
+                        {
+                            label: 'Bollinger Upper',
+                            data: data.bb_upper,
+                            borderColor: '#36a2eb',
+                            borderDash: [3, 3],
+                            fill: false
+                        },
+                        {
+                            label: 'Bollinger Lower',
+                            data: data.bb_lower,
+                            borderColor: '#36a2eb',
+                            borderDash: [3, 3],
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${symbol} Price Chart`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // RSI Chart
+            const rsiCtx = document.getElementById('rsiChartCanvas').getContext('2d');
+            rsiChart = new Chart(rsiCtx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [{
+                        label: 'RSI',
+                        data: data.rsi,
+                        borderColor: '#ff9f40',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${symbol} RSI`
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            }
+                        },
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month'
+                            }
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 0
+                        }
+                    }
+                }
+            });
+            
+            // MACD Chart
+            const macdCtx = document.getElementById('macdChartCanvas').getContext('2d');
+            macdChart = new Chart(macdCtx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [
+                        {
+                            label: 'MACD',
+                            data: data.macd,
+                            borderColor: '#4bc0c0',
+                            fill: false
+                        },
+                        {
+                            label: 'Signal Line',
+                            data: data.macd_signal,
+                            borderColor: '#ffcd56',
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${symbol} MACD`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month'
+                            }
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 0
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
