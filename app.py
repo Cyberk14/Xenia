@@ -92,31 +92,22 @@ def run_backtest_cached(
 
 def main():
     st.title("Xenia V2 ML Trading System")
-    st.markdown("Advanced Machine Learning Trading System with Technical Analysis")
+    st.markdown("Advanced AI Trading System with Technical Analysis")
 
     # Sidebar controls
     with st.sidebar:
         st.header("System Controls")
 
         # Symbol selection
-        symbols = st.multiselect(
-            "Select Trading Symbols",
-            [
-                "AAPL",
-                "GOOGL",
-                "MSFT",
-                "TSLA",
-                "AMZN",
-                "NVDA",
-                "META",
-                "SPY",
-                "QQQ",
-                "NFLX",
-                "AMD",
-                "CRM",
-            ],
-            default=["AAPL", "GOOGL", "MSFT", "TSLA"],
-        )
+        symbols = st.text_input(
+    label="Stock Symbol",
+    placeholder="e.g., AAPL, GOOGL",
+    help="Enter a valid stock ticker symbol"
+)
+        symbols = symbols.split(',')
+        if len(symbols) > 1:
+            symbols = [s.strip().upper() for s in symbols if s.strip()]  # Clean and filter
+            print(symbols)
 
         if not symbols:
             st.error("Please select at least one symbol")
