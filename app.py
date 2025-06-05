@@ -33,6 +33,8 @@ st.markdown(
         border-radius: 0.25rem;
         font-weight: bold;
         text-align: center;
+        text-size: 1.2rem;
+        font-size: 1.2rem;
     }
     .signal-sell {
         background-color: #f8d7da;
@@ -41,6 +43,8 @@ st.markdown(
         border-radius: 0.25rem;
         font-weight: bold;
         text-align: center;
+        text-size: 1.2rem;
+        font-size: 1.2rem;
     }
     .signal-hold {
         background-color: #fff3cd;
@@ -49,6 +53,9 @@ st.markdown(
         border-radius: 0.25rem;
         font-weight: bold;
         text-align: center;
+        text-size: 1.2rem;
+        font-size: 1.2rem;
+
     }
     .trade-profit {
         color: #28a745;
@@ -116,7 +123,7 @@ def main():
         # System parameters
         st.subheader("Parameters")
         initial_balance = st.number_input(
-            "Initial Balance ($)", value=100000, min_value=1000
+            "Initial Balance ($)", value=100000, min_value=100
         )
         transaction_cost = st.slider("Transaction Cost (%)", 0.001, 0.01, 0.002, 0.001)
 
@@ -241,6 +248,7 @@ def display_portfolio_overview():
             "Total Value",
             f"${portfolio['total_value']:,.2f}",
             f"{portfolio['total_return']:.2f}%",
+            f"{portfolio['total_realized_returns']:.2f}%",
         )
 
     with col2:
@@ -252,6 +260,9 @@ def display_portfolio_overview():
     with col4:
         total_trades = len(system.trades)
         st.metric("Total Trades", total_trades)
+        st.metric("Win Rate", f"{portfolio['win_rate']:.1f}%", delta_color="normal")
+    # Display portfolio summary
+    st.subheader("Portfolio Summary")
 
     # Portfolio allocation
     if portfolio["positions"]:
@@ -316,7 +327,7 @@ def display_current_signals():
                 conf_color = (
                     "🟢" if confidence > 0.7 else "🟡" if confidence > 0.5 else "🔴"
                 )
-                st.metric("Confidence", f"{conf_color} {confidence:.3f}")
+                st.metric("Confidence", f"{conf_color} {confidence:.2f}")
 
             with col3:
                 # Signal gauge
@@ -417,9 +428,16 @@ def display_backtest_results():
 
     with col3:
         st.metric("Avg Trade P&L", f"${avg_profit:.2f}")
+        st.metric("Avg Trade P&L", f"{avg_profit_pct:.2f}%")
 
     with col4:
         st.metric("Total Trades", len(system.trades))
+        st.metric(
+            "Total Buy Trades", len(buy_trades),
+        )
+        st.metric(
+            "Total Sell Trades", len(sell_trades)
+        )
 
     # Equity curve
     if system.trades:
@@ -428,7 +446,6 @@ def display_backtest_results():
         # Create equity curve from trades
         trade_dates = []
         portfolio_values = []
-        running_balance = system.initial_balance
 
         for trade in system.trades:
             trade_dates.append(trade["date"])
@@ -469,7 +486,7 @@ def display_backtest_results():
             )
 
         # Select relevant columns
-        display_cols = ["date", "symbol", "action", "shares", "price"]
+        display_cols = ["date", "symbol", "action", "shares", "price", "pnl"]
         if "pnl" in trades_df.columns:
             display_cols.extend(["pnl", "pnl_pct"])
         if "signal" in trades_df.columns:
@@ -484,7 +501,10 @@ def display_backtest_results():
             if col in trades_df.columns:
                 trades_df[col] = trades_df[col].round(3)
 
-        st.dataframe(trades_df[display_cols].tail(20), use_container_width=True)
+        st.dataframe(
+            trades_df[display_cols].tail(len(system.trades)*0.25),
+            use_container_width=True
+        )   
 
     # Performance by symbol
     if sell_trades:

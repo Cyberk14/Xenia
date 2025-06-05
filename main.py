@@ -27,6 +27,8 @@ class XeniaV2:
         self.models = {}
         self.scalers = {}
         self.trades = []
+        self.win_trades = []
+        self.lose_trades = []
         self.transaction_cost = transaction_cost
 
         # More realistic thresholds
@@ -651,7 +653,7 @@ class XeniaV2:
                 self.trades.append(trade)
 
                 print(
-                    f"🟢 BUY {symbol}: {shares:.2f} shares @ ${price:.2f} | Signal: {signal:.3f} | Confidence: {confidence:.3f}"
+                    f"BUY {symbol}: {shares:.2f} shares @ ${price:.2f} | Signal: {signal:.3f} | Confidence: {confidence:.3f}"
                 )
 
         except Exception as e:
@@ -698,6 +700,10 @@ class XeniaV2:
                     "balance_after": self.balance,
                 }
                 self.trades.append(trade)
+                if pnl <= 0:
+                    self.lose_trades.append(trade)
+                elif pnl > 0:
+                    self.win_trades.append(trade)
 
                 print(
                     f"🔴 SELL {symbol}: {shares:.2f} shares @ ${price:.2f} | P&L: ${pnl:.2f} ({pnl_pct:.2f}%)"
@@ -706,7 +712,7 @@ class XeniaV2:
         except Exception as e:
             print(f"Error executing sell for {symbol}: {e}")
 
-    async def run_backtest(self, start_date="2022-06-01", end_date="2024-01-01"):
+    async def run_backtest(self, start_date, end_date):
         """Run backtest with improved date handling"""
         print("=" * 60)
         print("IMPROVED ML TRADING SYSTEM - BACKTEST")
@@ -796,12 +802,14 @@ class XeniaV2:
 
         total_value = final_balance + portfolio_value
         total_return = (total_value - self.initial_balance) / self.initial_balance * 100
+        total_balance_return = (final_balance - self.initial_balance) / self.initial_balance * 100
 
         print(f"Initial Balance: ${self.initial_balance:,.2f}")
         print(f"Final Cash: ${final_balance:,.2f}")
         print(f"Portfolio Value: ${portfolio_value:,.2f}")
         print(f"Total Value: ${total_value:,.2f}")
         print(f"Total Return: {total_return:.2f}%")
+        print(f"Total Realized Return: {total_balance_return:.2f}%")
         print(f"Total Trades: {len(self.trades)}")
 
         # Trade statistics
@@ -810,6 +818,8 @@ class XeniaV2:
 
         print(f"Buy Trades: {len(buy_trades)}")
         print(f"Sell Trades: {len(sell_trades)}")
+        print(f"Profitable Trades: {len(self.win_trades)}")
+        print(f"Losing Trades: {len(self.losing_trades)}")
 
         if sell_trades:
             profitable_trades = [t for t in sell_trades if t["pnl"] > 0]
@@ -867,8 +877,8 @@ class XeniaV2:
                         symbol, latest_idx
                     )
 
-                    combined_signal = model_signal * 0.6 + tech_signal * 0.4
-                    combined_confidence = model_confidence * 0.6 + tech_confidence * 0.4
+                    combined_signal = model_signal * 0.4 + tech_signal * 0.6
+                    combined_confidence = model_confidence * 0.4 + tech_confidence * 0.6
 
                     current_price = self.data[symbol]["Close"].iloc[-1]
 
@@ -918,6 +928,9 @@ class XeniaV2:
 
         portfolio["total_return"] = (
             (portfolio["total_value"] - self.initial_balance) / self.initial_balance
+        ) * 100
+        portfolio["total_realized_returns"] = (
+            (self.balance - self.initial_balance) / self.initial_balance
         ) * 100
 
         return portfolio
