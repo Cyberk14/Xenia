@@ -819,7 +819,7 @@ class XeniaV2:
         print(f"Buy Trades: {len(buy_trades)}")
         print(f"Sell Trades: {len(sell_trades)}")
         print(f"Profitable Trades: {len(self.win_trades)}")
-        print(f"Losing Trades: {len(self.losing_trades)}")
+        print(f"Losing Trades: {len(self.lose_trades)}")
 
         if sell_trades:
             profitable_trades = [t for t in sell_trades if t["pnl"] > 0]

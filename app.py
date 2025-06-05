@@ -246,21 +246,27 @@ def display_portfolio_overview():
     with col1:
         st.metric(
             "Total Value",
-            f"${portfolio['total_value']:,.2f}",
-            f"{portfolio['total_return']:.2f}%",
-            f"{portfolio['total_realized_returns']:.2f}%",
-        )
+            f"${portfolio['total_value']:,.2f}"
+            )
 
     with col2:
         st.metric("Cash Balance", f"${portfolio['cash']:,.2f}")
+        st.metric(
+            "Realized Returns",
+            f"{portfolio['total_realized_returns']:.2f}%"
+            )
 
     with col3:
         st.metric("Active Positions", len(portfolio["positions"]))
+        st.metric(
+            "Total Return",
+            f"{portfolio['total_return']:.2f}%"
+            )
 
     with col4:
         total_trades = len(system.trades)
         st.metric("Total Trades", total_trades)
-        st.metric("Win Rate", f"{portfolio['win_rate']:.1f}%", delta_color="normal")
+        st.metric("Win Rate", f"{((len(st.session_state.system.win_trades) / total_trades) * 100):.1}%", delta_color="normal")
     # Display portfolio summary
     st.subheader("Portfolio Summary")
 
@@ -486,7 +492,7 @@ def display_backtest_results():
             )
 
         # Select relevant columns
-        display_cols = ["date", "symbol", "action", "shares", "price", "pnl"]
+        display_cols = ["date", "symbol", "action", "shares", "price"]
         if "pnl" in trades_df.columns:
             display_cols.extend(["pnl", "pnl_pct"])
         if "signal" in trades_df.columns:
@@ -502,7 +508,7 @@ def display_backtest_results():
                 trades_df[col] = trades_df[col].round(3)
 
         st.dataframe(
-            trades_df[display_cols].tail(len(system.trades)*0.25),
+            trades_df[display_cols].tail(30),
             use_container_width=True
         )   
 
