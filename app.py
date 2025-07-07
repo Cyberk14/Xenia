@@ -107,13 +107,15 @@ def main():
 
         # Symbol selection
         symbols = st.text_input(
-    label="Stock Symbol",
-    placeholder="e.g., AAPL, GOOGL",
-    help="Enter a valid stock ticker symbol"
-)
-        symbols = symbols.split(',')
+            label="Stock Symbol",
+            placeholder="e.g., AAPL, GOOGL",
+            help="Enter a valid stock ticker symbol",
+        )
+        symbols = symbols.split(",")
         if len(symbols) > 1:
-            symbols = [s.strip().upper() for s in symbols if s.strip()]  # Clean and filter
+            symbols = [
+                s.strip().upper() for s in symbols if s.strip()
+            ]  # Clean and filter
             print(symbols)
 
         if not symbols:
@@ -244,29 +246,24 @@ def display_portfolio_overview():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Total Value",
-            f"${portfolio['total_value']:,.2f}"
-            )
+        st.metric("Total Value", f"${portfolio['total_value']:,.2f}")
 
     with col2:
         st.metric("Cash Balance", f"${portfolio['cash']:,.2f}")
-        st.metric(
-            "Realized Returns",
-            f"{portfolio['total_realized_returns']:.2f}%"
-            )
+        st.metric("Realized Returns", f"{portfolio['total_realized_returns']:.2f}%")
 
     with col3:
         st.metric("Active Positions", len(portfolio["positions"]))
-        st.metric(
-            "Total Return",
-            f"{portfolio['total_return']:.2f}%"
-            )
+        st.metric("Total Return", f"{portfolio['total_return']:.2f}%")
 
     with col4:
         total_trades = len(system.trades)
         st.metric("Total Trades", total_trades)
-        st.metric("Win Rate", f"{((len(st.session_state.system.win_trades) / total_trades) * 100):.1}%", delta_color="normal")
+        st.metric(
+            "Win Rate",
+            f"{((len(st.session_state.system.win_trades) / total_trades) * 100):.1}%",
+            delta_color="normal",
+        )
     # Display portfolio summary
     st.subheader("Portfolio Summary")
 
@@ -439,11 +436,10 @@ def display_backtest_results():
     with col4:
         st.metric("Total Trades", len(system.trades))
         st.metric(
-            "Total Buy Trades", len(buy_trades),
+            "Total Buy Trades",
+            len(buy_trades),
         )
-        st.metric(
-            "Total Sell Trades", len(sell_trades)
-        )
+        st.metric("Total Sell Trades", len(sell_trades))
 
     # Equity curve
     if system.trades:
@@ -507,10 +503,7 @@ def display_backtest_results():
             if col in trades_df.columns:
                 trades_df[col] = trades_df[col].round(3)
 
-        st.dataframe(
-            trades_df[display_cols].tail(30),
-            use_container_width=True
-        )   
+        st.dataframe(trades_df[display_cols].tail(30), use_container_width=True)
 
     # Performance by symbol
     if sell_trades:
