@@ -1,0 +1,10 @@
+
+pandas
+numpy
+yfinance
+ta
+scikit-learn
+alpaca-trade-api
+aiohttp
+tenacity
+websockets>=11.0
