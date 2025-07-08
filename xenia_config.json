@@ -1,0 +1,37 @@
+{
+  "initial_balance": 1000.0,
+  "transaction_cost": 0.002,
+  "min_accuracy_threshold": 0.35,
+  "signal_threshold": 0.35,
+  "confidence_threshold": 0.5,
+  "max_position_size": 0.2,
+  "min_fetch_interval": 1.0,
+  "live_trading": true,
+  "enable_monte_carlo": false,
+  "monte_carlo_simulations": 10000,
+  "forecast_days": 252,
+  "run_interval_hours": 24,
+  "market_timezone": "US/Eastern",
+  "local_timezone": "Africa/Kampala",
+  "risk_per_trade": 0.01,
+  "api_key": "PKB6827AE6J1CM0IKLEJ",
+  "api_secret": "bRQuhjlrbz7uVqX3SeBfJ2KaRWsOcAYLXv5rbgZV",
+  "symbols": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN"
+  ],
+  "email_config": {
+    "enabled": true,
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "sender_email": "ssengendonasser14@gmail.com",
+    "sender_password": "cgbjvkrbxyvomhms",
+    "recipient_email": "void.ynd@gmail.com",
+    "send_on_signals": true,
+    "send_on_trades": true,
+    "send_on_errors": true,
+    "send_daily_summary": true
+  }
+}
