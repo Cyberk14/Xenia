@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -27,6 +28,7 @@ warnings.filterwarnings('ignore')
 import ta
 
 from datastream.yfinance_ohlcv import YFinanceOHLCVFetcher as DatastreamFetcher
+from alpaca_markets import AlpacaTrader
 
 warnings.filterwarnings("ignore")
 
@@ -239,7 +241,7 @@ class YFinanceDataFetcher(DataFetcher):
         """Fetch data using datastream fetcher"""
         try:
             if config.lookback_days:
-                data = self.datastream_fetcher.fetch_ohlcv(
+                data = self.datastream_fetcher._fetch_ohlcv_sync(
                     config.symbol,
                     resolution=config.resolution,
                     lookback_days=config.lookback_days,
@@ -258,10 +260,20 @@ class YFinanceDataFetcher(DataFetcher):
                 data = await asyncio.get_event_loop().run_in_executor(
                     None, self._fetch_datastream_data, config
                 )
-                if data is not None and self.validate_data(data):
-                    return data
+                keys = {
+                    'open': "Open",
+                    'high': 'High',
+                    'low': "Low",
+                    'close': "Close",
+                    'volume': "Volume"
+                }
 
-            # Fallback to yfinance
+                data.rename(columns=keys, inplace=True)
+                if data is not None and self.validate_data(data):
+                    
+                    return data
+            
+                # Fallback to yfinance
             data = await asyncio.get_event_loop().run_in_executor(
                 None, self._fetch_yfinance_data, config
             )
@@ -1816,21 +1828,21 @@ class ProfessionalVisualizer:
                         self.colors['warning'], self.colors['success']]
         colors = [color_palette[i % len(color_palette)] for i in range(len(labels))]
         
-        fig.add_trace(
-            go.Pie(
-                labels=labels,
-                values=values,
-                name="Asset Allocation",
-                marker_colors=colors,
-                textinfo='label+percent',
-                textposition='auto',
-                hovertemplate='<b>%{label}</b><br>' +
-                            'Value: $%{value:,.2f}<br>' +
-                            'Percentage: %{percent}<br>' +
-                            '<extra></extra>'
-            ),
-            row=row, col=col
-        )
+        # fig.add_trace(
+        #     go.Pie(
+        #         labels=labels,
+        #         values=values,
+        #         name="Asset Allocation",
+        #         marker_colors=colors,
+        #         textinfo='label+percent',
+        #         textposition='auto',
+        #         hovertemplate='<b>%{label}</b><br>' +
+        #                     'Value: $%{value:,.2f}<br>' +
+        #                     'Percentage: %{percent}<br>' +
+        #                     '<extra></extra>'
+        #     ),
+        #     row=row, col=col
+        # )
     
     def _add_performance_attribution(self, fig, row, col):
         """Add performance attribution analysis"""
@@ -2632,7 +2644,7 @@ class XeniaV2Modular:
 
         self.generate_results()
 
-    def run_professional_analysis(self, num_monte_carlo=1000, forecast_days=252):
+    def run_professional_analysis(self, num_monte_carlo=10000, forecast_days=252):
         """Run comprehensive professional analysis"""
         print("\n🔬 Running Professional Analysis...")
         
@@ -2657,10 +2669,10 @@ class XeniaV2Modular:
         visualizer = ProfessionalVisualizer(self, monte_carlo)
         
         # Generate executive dashboard
-        # visualizer.create_executive_dashboard('executive_dashboard.html')
+        visualizer.create_executive_dashboard('executive_dashboard.html')
         
-        # # Generate investor report
-        # visualizer.create_investor_report('investor_report.md')
+        # Generate investor report
+        visualizer.create_investor_report('investor_report.md')
         
         print("\n✅ Professional analysis complete!")
         print("📊 Executive dashboard saved as 'executive_dashboard.html'")
@@ -2926,74 +2938,1035 @@ def create_custom_system(
     )
 
 
-# Main execution
-async def main():
-    """Main function for standalone execution"""
-    print("Initializing Modular Xenia V2 Trading System...")
+def create_default_trader(api_key: Optional[str] = None, secret_key: Optional[str] = None):
 
-    # Define symbols
-    symbols = [
-        "NPWR",  # Technical breakout with heavy flow
-        "GITS",  # Pre-market surge from 8-K/CEO news
-        "EMPG",  # IPO-driven jump
-        "WINT",  # Biotech headlines moving price
-        "CV",    # IPO-related move
-        "MINM",  # Acquisition/news catalyst
-        "SPX"    # Index expected to show higher volatility
+    if not api_key and secret_key:
+        api_key='PKB6827AE6J1CM0IKLEJ'
+        secret_key='bRQuhjlrbz7uVqX3SeBfJ2KaRWsOcAYLXv5rbgZV'
+
+    return AlpacaTrader(
+        api_key=api_key,
+        secret_key=secret_key
+    )
+
+import asyncio
+import argparse
+import json
+import time
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, Any, Optional
+import pytz
+from dataclasses import dataclass, asdict
+import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+import os
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('xenia_trading.log'),
+        logging.StreamHandler()
     ]
+)
+logger = logging.getLogger(__name__)
 
+@dataclass
+class EmailConfig:
+    """Configuration for email notifications"""
+    enabled: bool = True
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    sender_email: str = ""
+    sender_password: str = ""
+    recipient_email: str = "void.ynd@gmail.com"
+    send_on_signals: bool = True
+    send_on_trades: bool = True
+    send_on_errors: bool = True
+    send_daily_summary: bool = True
 
-    # Create custom data fetcher configs for some symbols
-    custom_data_configs = {
-        "AAPL": DataFetcherConfig(symbol="AAPL", resolution="60", lookback_days=55),
-        "GOOGL": DataFetcherConfig(symbol="GOOGL", resolution="1d", period="2y"),
-    }
+class EmailNotificationService:
+    """Email notification service for trading system"""
+    
+    def __init__(self, config: EmailConfig):
+        self.config = config
+        self.daily_events = []
+        self.last_summary_date = None
+        
+    def add_event(self, event_type: str, message: str, data: Dict = None):
+        """Add an event to the daily summary"""
+        event = {
+            'timestamp': datetime.now().isoformat(),
+            'type': event_type,
+            'message': message,
+            'data': data or {}
+        }
+        self.daily_events.append(event)
+        
+    def send_email(self, subject: str, body: str, html_body: str = None) -> bool:
+        """Send email notification"""
+        if not self.config.enabled or not self.config.sender_email or not self.config.sender_password:
+            logger.warning("Email notifications not properly configured")
+            return False
+            
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.config.sender_email
+            msg['To'] = self.config.recipient_email
+            msg['Subject'] = f"[XENIA TRADING] {subject}"
+            
+            # Add text version
+            text_part = MIMEText(body, 'plain')
+            msg.attach(text_part)
+            
+            # Add HTML version if provided
+            if html_body:
+                html_part = MIMEText(html_body, 'html')
+                msg.attach(html_part)
+            
+            # Connect and send email
+            server = smtplib.SMTP(self.config.smtp_server, self.config.smtp_port)
+            server.starttls()
+            server.login(self.config.sender_email, self.config.sender_password)
+            server.send_message(msg)
+            server.quit()
+            
+            logger.info(f"Email sent successfully: {subject}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
+    
+    def send_signal_notification(self, signals: Dict[str, Dict]):
+        """Send notification for new trading signals"""
+        if not self.config.send_on_signals:
+            return
+            
+        active_signals = {k: v for k, v in signals.items() if v['recommendation'] != 'HOLD'}
+        
+        if not active_signals:
+            return
+            
+        subject = f"New Trading Signals - {len(active_signals)} Active"
+        
+        # Text version
+        body = f"New trading signals detected at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n"
+        for symbol, signal_data in active_signals.items():
+            body += f"{symbol}: {signal_data['recommendation']} | "
+            body += f"Signal: {signal_data['combined_signal']:.3f} | "
+            body += f"Confidence: {signal_data['confidence']:.3f} | "
+            body += f"Price: ${signal_data['price']:.2f}\n"
+        
+        # HTML version
+        html_body = f"""
+        <html>
+        <body>
+        <h2>🚀 New Trading Signals</h2>
+        <p><strong>Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>Active Signals:</strong> {len(active_signals)}</p>
+        
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+        <tr style="background-color: #f2f2f2;">
+            <th>Symbol</th>
+            <th>Recommendation</th>
+            <th>Signal</th>
+            <th>Confidence</th>
+            <th>Price</th>
+        </tr>
+        """
+        
+        for symbol, signal_data in active_signals.items():
+            color = "#28a745" if signal_data['recommendation'] == 'BUY' else "#dc3545"
+            html_body += f"""
+            <tr>
+                <td><strong>{symbol}</strong></td>
+                <td style="color: {color}; font-weight: bold;">{signal_data['recommendation']}</td>
+                <td>{signal_data['combined_signal']:.3f}</td>
+                <td>{signal_data['confidence']:.3f}</td>
+                <td>${signal_data['price']:.2f}</td>
+            </tr>
+            """
+        
+        html_body += """
+        </table>
+        </body>
+        </html>
+        """
+        
+        self.send_email(subject, body, html_body)
+        self.add_event("SIGNALS", f"Sent signal notification for {len(active_signals)} symbols", active_signals)
+    
+    def send_trade_notification(self, trades: Dict[str, tuple]):
+        """Send notification for executed trades"""
+        if not self.config.send_on_trades or not trades:
+            return
+            
+        subject = f"Trades Executed - {len(trades)} Positions"
+        
+        # Text version
+        body = f"Trades executed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n"
+        for symbol, (signal, price) in trades.items():
+            body += f"{symbol}: {signal} at ${price:.2f}\n"
+        
+        # HTML version
+        html_body = f"""
+        <html>
+        <body>
+        <h2>💼 Trades Executed</h2>
+        <p><strong>Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>Trades:</strong> {len(trades)}</p>
+        
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+        <tr style="background-color: #f2f2f2;">
+            <th>Symbol</th>
+            <th>Action</th>
+            <th>Price</th>
+        </tr>
+        """
+        
+        for symbol, (signal, price) in trades.items():
+            color = "#28a745" if signal == 'BUY' else "#dc3545"
+            html_body += f"""
+            <tr>
+                <td><strong>{symbol}</strong></td>
+                <td style="color: {color}; font-weight: bold;">{signal}</td>
+                <td>${price:.2f}</td>
+            </tr>
+            """
+        
+        html_body += """
+        </table>
+        </body>
+        </html>
+        """
+        
+        self.send_email(subject, body, html_body)
+        self.add_event("TRADES", f"Executed {len(trades)} trades", trades)
+    
+    def send_error_notification(self, error_message: str, context: str = ""):
+        """Send notification for errors"""
+        if not self.config.send_on_errors:
+            return
+            
+        subject = "❌ Trading System Error"
+        
+        body = f"Error occurred in Xenia Trading System:\n\n"
+        body += f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        body += f"Context: {context}\n"
+        body += f"Error: {error_message}\n"
+        
+        html_body = f"""
+        <html>
+        <body>
+        <h2 style="color: #dc3545;">❌ Trading System Error</h2>
+        <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>Context:</strong> {context}</p>
+        <p><strong>Error:</strong></p>
+        <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{error_message}</pre>
+        </body>
+        </html>
+        """
+        
+        self.send_email(subject, body, html_body)
+        self.add_event("ERROR", f"Error in {context}: {error_message}")
+    
+    def send_daily_summary(self, portfolio_status: Dict = None):
+        """Send daily summary of trading activities"""
+        if not self.config.send_daily_summary:
+            return
+            
+        today = datetime.now().date()
+        if self.last_summary_date == today:
+            return
+            
+        self.last_summary_date = today
+        
+        subject = f"Daily Trading Summary - {today.strftime('%Y-%m-%d')}"
+        
+        # Count events by type
+        event_counts = {}
+        for event in self.daily_events:
+            event_type = event['type']
+            event_counts[event_type] = event_counts.get(event_type, 0) + 1
+        
+        # Text version
+        body = f"Daily Trading Summary for {today.strftime('%Y-%m-%d')}:\n\n"
+        body += f"Total Events: {len(self.daily_events)}\n"
+        
+        for event_type, count in event_counts.items():
+            body += f"{event_type}: {count}\n"
+        
+        if portfolio_status:
+            body += f"\nPortfolio Status:\n"
+            body += f"Cash: ${portfolio_status.get('cash', 0):.2f}\n"
+            body += f"Total Value: ${portfolio_status.get('total_value', 0):.2f}\n"
+            body += f"Total Return: {portfolio_status.get('total_return', 0):.2f}%\n"
+        
+        body += "\nRecent Events:\n"
+        for event in self.daily_events[-5:]:  # Show last 5 events
+            body += f"{event['timestamp']}: {event['type']} - {event['message']}\n"
+        
+        # HTML version
+        html_body = f"""
+        <html>
+        <body>
+        <h2>📊 Daily Trading Summary</h2>
+        <p><strong>Date:</strong> {today.strftime('%Y-%m-%d')}</p>
+        <p><strong>Total Events:</strong> {len(self.daily_events)}</p>
+        
+        <h3>Event Summary</h3>
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+        <tr style="background-color: #f2f2f2;">
+            <th>Event Type</th>
+            <th>Count</th>
+        </tr>
+        """
+        
+        for event_type, count in event_counts.items():
+            html_body += f"""
+            <tr>
+                <td>{event_type}</td>
+                <td>{count}</td>
+            </tr>
+            """
+        
+        html_body += "</table>"
+        
+        if portfolio_status:
+            html_body += f"""
+            <h3>Portfolio Status</h3>
+            <table border="1" style="border-collapse: collapse; width: 100%;">
+            <tr><td><strong>Cash</strong></td><td>${portfolio_status.get('cash', 0):.2f}</td></tr>
+            <tr><td><strong>Total Value</strong></td><td>${portfolio_status.get('total_value', 0):.2f}</td></tr>
+            <tr><td><strong>Total Return</strong></td><td>{portfolio_status.get('total_return', 0):.2f}%</td></tr>
+            </table>
+            """
+        
+        html_body += """
+        </body>
+        </html>
+        """
+        
+        self.send_email(subject, body, html_body)
+        
+        # Clear daily events after sending summary
+        self.daily_events = []
 
-    # Create system using default factory
-    system = create_default_system(
-        symbols, initial_balance=1000, custom_data_configs=custom_data_configs
-    )
+@dataclass
+class TradingConfig:
+    """Configuration for the trading system"""
+    # Trading parameters
+    live_trading: bool = False
+    enable_monte_carlo: bool = False
+    monte_carlo_simulations: int = 10000
+    forecast_days: int = 252
+    
+    # Timing parameters
+    run_interval_hours: int = 24
+    market_timezone: str = "US/Eastern"  # NYSE/NASDAQ timezone
+    local_timezone: str = "Africa/Kampala"  # Uganda timezone
+    
+    # Portfolio parameters
+    initial_balance: float = 1000.0
+    risk_per_trade: float = 0.01  # 1% of buying power per trade
+    
+    # API credentials (to be loaded from environment or config)
+    api_key: str = ""
+    api_secret: str = ""
+    
+    # Trading symbols
+    symbols: list = None
+    
+    # Email configuration
+    email_config: EmailConfig = None
+    
+    def __post_init__(self):
+        if self.symbols is None:
+            self.symbols = [
+                "AAPL",  # AI investments + positioning in "Magnificent Seven"
+                "MSFT",  # Cloud/AI infrastructure benefit
+                "NVDA",  # Upgraded targets; Blackwell chips; continued AI tailwinds
+                "AMZN",  # Heavy cloud spending, large-cap AI exposure
+                # Add more symbols as needed
+            ]
+        
+        if self.email_config is None:
+            self.email_config = EmailConfig()
 
-    # Run backtest
-    await system.run_backtest()
+class MarketHoursChecker:
+    """Check if the market is open considering holidays and weekends"""
+    
+    def __init__(self, market_tz: str = "US/Eastern", local_tz: str = "Africa/Kampala"):
+        self.market_tz = pytz.timezone(market_tz)
+        self.local_tz = pytz.timezone(local_tz)
+        
+        # Common US market holidays (simplified)
+        self.holidays_2024 = [
+            "2024-01-01",  # New Year's Day
+            "2024-01-15",  # Martin Luther King Jr. Day
+            "2024-02-19",  # Presidents' Day
+            "2024-03-29",  # Good Friday
+            "2024-05-27",  # Memorial Day
+            "2024-06-19",  # Juneteenth
+            "2024-07-04",  # Independence Day
+            "2024-09-02",  # Labor Day
+            "2024-11-28",  # Thanksgiving
+            "2024-12-25",  # Christmas
+        ]
+        
+        self.holidays_2025 = [
+            "2025-01-01",  # New Year's Day
+            "2025-01-20",  # Martin Luther King Jr. Day
+            "2025-02-17",  # Presidents' Day
+            "2025-04-18",  # Good Friday
+            "2025-05-26",  # Memorial Day
+            "2025-06-19",  # Juneteenth
+            "2025-07-04",  # Independence Day
+            "2025-09-01",  # Labor Day
+            "2025-11-27",  # Thanksgiving
+            "2025-12-25",  # Christmas
+        ]
+    
+    def is_market_open(self) -> bool:
+        """Check if the US stock market is currently open"""
+        now_utc = datetime.now(pytz.UTC)
+        market_time = now_utc.astimezone(self.market_tz)
+        
+        # Check if it's a weekend
+        if market_time.weekday() >= 5:  # Saturday = 5, Sunday = 6
+            return False
+        
+        # Check if it's a holiday
+        market_date = market_time.date().strftime("%Y-%m-%d")
+        if market_date in self.holidays_2024 + self.holidays_2025:
+            return False
+        
+        # Check market hours (9:30 AM - 4:00 PM EST)
+        market_hour = market_time.hour
+        market_minute = market_time.minute
+        
+        # Market opens at 9:30 AM
+        if market_hour < 9 or (market_hour == 9 and market_minute < 30):
+            return False
+        
+        # Market closes at 4:00 PM
+        if market_hour >= 16:
+            return False
+        
+        return True
+    
+    def get_next_market_open(self) -> datetime:
+        """Get the next time the market will be open"""
+        now_utc = datetime.now(pytz.UTC)
+        market_time = now_utc.astimezone(self.market_tz)
+        
+        # Start checking from the next day if market is closed today
+        check_date = market_time.date()
+        if market_time.hour >= 16:  # After market close
+            check_date += timedelta(days=1)
+        
+        # Find the next market day
+        while True:
+            # Skip weekends
+            if check_date.weekday() >= 5:
+                check_date += timedelta(days=1)
+                continue
+            
+            # Skip holidays
+            if check_date.strftime("%Y-%m-%d") in self.holidays_2024 + self.holidays_2025:
+                check_date += timedelta(days=1)
+                continue
+            
+            break
+        
+        # Set to 9:30 AM market time
+        next_open = self.market_tz.localize(
+            datetime.combine(check_date, datetime.min.time().replace(hour=9, minute=30))
+        )
+        
+        return next_open
+    
+    def time_until_market_open(self) -> timedelta:
+        """Get time remaining until market opens"""
+        if self.is_market_open():
+            return timedelta(0)
+        
+        next_open = self.get_next_market_open()
+        now_utc = datetime.now(pytz.UTC)
+        
+        return next_open - now_utc
 
-    # Run professional analysis
-    monte_carlo = system.run_professional_analysis(
-        num_monte_carlo=1000,  # Number of Monte Carlo simulations
-        forecast_days=252      # Forecast period (trading days)
-    )
-
-    # Show current signals
-    print("\n" + "=" * 60)
-    print("CURRENT SIGNALS")
-    print("=" * 60)
-
-    signals = system.get_current_signals()
-    for symbol, signal_data in signals.items():
-        print(
-            f"{symbol}: {signal_data['recommendation']} | "
-            f"Signal: {signal_data['combined_signal']:.3f} | "
-            f"Confidence: {signal_data['confidence']:.3f} | "
-            f"Price: ${signal_data['price']:.2f}"
+class XeniaCLI:
+    """Command Line Interface for Xenia Trading System"""
+    
+    def __init__(self):
+        self.config = TradingConfig()
+        self.config_file = Path("xenia_config.json")
+        self.market_checker = MarketHoursChecker()
+        self.running = False
+        self.email_service = EmailNotificationService(self.config.email_config)
+        
+    def load_config(self) -> None:
+        """Load configuration from file"""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, 'r') as f:
+                    config_data = json.load(f)
+                    
+                    # Handle email config separately
+                    if 'email_config' in config_data:
+                        email_data = config_data.pop('email_config')
+                        self.config.email_config = EmailConfig(**email_data)
+                    
+                    for key, value in config_data.items():
+                        if hasattr(self.config, key):
+                            setattr(self.config, key, value)
+                
+                # Update email service with new config
+                self.email_service = EmailNotificationService(self.config.email_config)
+                logger.info("Configuration loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading config: {e}")
+                self.email_service.send_error_notification(str(e), "Loading configuration")
+        else:
+            self.save_config()
+    
+    def save_config(self) -> None:
+        """Save configuration to file"""
+        try:
+            config_dict = asdict(self.config)
+            with open(self.config_file, 'w') as f:
+                json.dump(config_dict, f, indent=2)
+            logger.info("Configuration saved successfully")
+        except Exception as e:
+            logger.error(f"Error saving config: {e}")
+            self.email_service.send_error_notification(str(e), "Saving configuration")
+    
+    def show_status(self) -> None:
+        """Display current system status"""
+        print("\n" + "=" * 60)
+        print("XENIA TRADING SYSTEM STATUS")
+        print("=" * 60)
+        
+        market_open = self.market_checker.is_market_open()
+        print(f"Market Status: {'🟢 OPEN' if market_open else '🔴 CLOSED'}")
+        
+        if not market_open:
+            time_until = self.market_checker.time_until_market_open()
+            print(f"Next Market Open: {time_until}")
+        
+        print(f"Live Trading: {'🟢 ENABLED' if self.config.live_trading else '🔴 DISABLED'}")
+        print(f"Monte Carlo: {'🟢 ENABLED' if self.config.enable_monte_carlo else '🔴 DISABLED'}")
+        print(f"Email Notifications: {'🟢 ENABLED' if self.config.email_config.enabled else '🔴 DISABLED'}")
+        print(f"Run Interval: {self.config.run_interval_hours} hours")
+        print(f"Symbols: {', '.join(self.config.symbols)}")
+        print(f"System Running: {'🟢 YES' if self.running else '🔴 NO'}")
+        
+        # Show local time
+        local_time = datetime.now(pytz.timezone(self.config.local_timezone))
+        market_time = datetime.now(pytz.timezone(self.config.market_timezone))
+        print(f"\nLocal Time (Uganda): {local_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"Market Time (EST): {market_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    
+    def toggle_live_trading(self) -> None:
+        """Toggle live trading on/off"""
+        self.config.live_trading = not self.config.live_trading
+        status = "ENABLED" if self.config.live_trading else "DISABLED"
+        print(f"Live Trading: {status}")
+        self.save_config()
+    
+    def toggle_monte_carlo(self) -> None:
+        """Toggle Monte Carlo analysis on/off"""
+        self.config.enable_monte_carlo = not self.config.enable_monte_carlo
+        status = "ENABLED" if self.config.enable_monte_carlo else "DISABLED"
+        print(f"Monte Carlo Analysis: {status}")
+        self.save_config()
+    
+    def toggle_email_notifications(self) -> None:
+        """Toggle email notifications on/off"""
+        self.config.email_config.enabled = not self.config.email_config.enabled
+        status = "ENABLED" if self.config.email_config.enabled else "DISABLED"
+        print(f"Email Notifications: {status}")
+        self.save_config()
+    
+    def configure_email(self, sender_email: str, sender_password: str) -> None:
+        """Configure email credentials"""
+        self.config.email_config.sender_email = sender_email
+        self.config.email_config.sender_password = sender_password
+        print("Email credentials configured")
+        self.save_config()
+        
+        # Update email service
+        self.email_service = EmailNotificationService(self.config.email_config)
+        
+        # Send test email
+        self.email_service.send_email(
+            "Email Configuration Test",
+            "Email notifications have been successfully configured for Xenia Trading System.",
+            "<h2>✅ Email Configuration Test</h2><p>Email notifications have been successfully configured for Xenia Trading System.</p>"
+        )
+    
+    def set_interval(self, hours: int) -> None:
+        """Set run interval in hours"""
+        if hours < 1:
+            print("Error: Interval must be at least 1 hour")
+            return
+        
+        self.config.run_interval_hours = hours
+        print(f"Run interval set to: {hours} hours")
+        self.save_config()
+    
+    def configure_api(self, api_key: str, api_secret: str) -> None:
+        """Configure API credentials"""
+        self.config.api_key = api_key
+        self.config.api_secret = api_secret
+        print("API credentials configured")
+        self.save_config()
+    
+    async def run_trading_cycle(self) -> None:
+        """Execute one complete trading cycle"""
+        try:
+            print("\n" + "=" * 60)
+            print(f"STARTING TRADING CYCLE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 60)
+            
+            self.email_service.add_event("CYCLE_START", "Starting trading cycle")
+            
+            # Check if market is open
+            if not self.market_checker.is_market_open():
+                print("Market is closed. Skipping trading cycle.")
+                self.email_service.add_event("MARKET_CLOSED", "Market is closed, skipping cycle")
+                return
+            
+            # Import your trading system modules here
+            # from your_trading_system import create_default_system, create_default_trader, DataFetcherConfig
+            
+            # Create custom data fetcher configs
+            custom_data_configs = {}
+            for symbol in self.config.symbols:
+                custom_data_configs[symbol] = DataFetcherConfig(symbol=symbol, period='1y')
+                
+            
+            # Create system using default factory
+            system = create_default_system(
+                self.config.symbols,
+                initial_balance=self.config.initial_balance,
+                custom_data_configs=custom_data_configs
+            )
+            
+            # Create trader if live trading is enabled
+            trader = None
+            if self.config.live_trading and self.config.api_key and self.config.api_secret:
+                trader = create_default_trader(self.config.api_key, self.config.api_secret)
+                
+            
+            # Run backtest
+            print("Running backtest...")
+            await system.run_backtest()
+            
+            # Run professional analysis if enabled
+            if self.config.enable_monte_carlo:
+                print("Running Monte Carlo analysis...")
+                system.run_professional_analysis(
+                    num_monte_carlo=self.config.monte_carlo_simulations,
+                    forecast_days=self.config.forecast_days
+                )
+            
+            # Show current signals
+            print("\n" + "=" * 60)
+            print("CURRENT SIGNALS")
+            print("=" * 60)
+            
+            live_signals = {}
+            signals = system.get_current_signals()
+          
+            for symbol, signal_data in signals.items():
+                if signal_data['recommendation'] != 'HOLD':
+                    live_signals[symbol] = [signal_data['recommendation'], signal_data['price']]
+                print(
+                    f"{symbol}: {signal_data['recommendation']} | "
+                    f"Signal: {signal_data['combined_signal']:.3f} | "
+                    f"Confidence: {signal_data['confidence']:.3f} | "
+                    f"Price: ${signal_data['price']:.2f}"
+                )
+            
+            # Send signal notifications
+            if signals:
+                self.email_service.send_signal_notification(signals)
+            
+            # Show portfolio status
+            print("\n" + "=" * 60)
+            print("PORTFOLIO STATUS")
+            print("=" * 60)
+            
+            portfolio = system.get_portfolio_status()
+            
+            if portfolio:
+                print(f"Cash: ${portfolio['cash']:.2f}")
+                print(f"Total Value: ${portfolio['total_value']:.2f}")
+                print(f"Total Return: {portfolio['total_return']:.2f}%")
+                
+                if portfolio.get("positions"):
+                    print("\nPositions:")
+                    for symbol, position in portfolio["positions"].items():
+                        print(
+                            f"{symbol}: {position['shares']:.2f} shares @ "
+                            f"${position['current_price']:.2f} = ${position['value']:.2f}"
+                        )
+            
+            # Execute live trades if enabled
+            executed_trades = {}
+            if self.config.live_trading and trader and live_signals:
+                print("\n" + "=" * 60)
+                print("EXECUTING LIVE TRADES")
+                print("=" * 60)
+                
+                account_info = trader.get_account_info()
+                
+                if account_info:
+                    for symbol, (signal, price) in live_signals.items():
+                        quantity = (account_info['buying_power'] * self.config.risk_per_trade) / price
+                        
+                        print(f"Executing {signal} for {symbol}: {quantity:.2f} shares")
+                        
+                        trader.execute_signal(
+                            signal,
+                            symbol,
+                            quantity=(quantity if signal.upper() == 'BUY' else None)
+                        )
+                        
+                        executed_trades[symbol] = (signal, price)
+                        time.sleep(1)  # Rate limiting
+            
+            # Send trade notifications
+            if executed_trades:
+                self.email_service.send_trade_notification(executed_trades)
+            
+            # Send daily summary
+            self.email_service.send_daily_summary(portfolio)
+            
+            print("\n" + "=" * 60)
+            print("TRADING CYCLE COMPLETED")
+            print("=" * 60)
+            
+            self.email_service.add_event("CYCLE_COMPLETE", "Trading cycle completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error in trading cycle: {e}")
+            print(f"Error in trading cycle: {e}")
+            self.email_service.send_error_notification(str(e), "Trading cycle")
+    
+    async def start_system(self) -> None:
+        """Start the automated trading system"""
+        if self.running:
+            print("System is already running!")
+            return
+        
+        self.running = True
+        print("Starting Xenia Trading System...")
+        print("Press Ctrl+C to stop the system")
+        
+        # Send startup notification
+        self.email_service.send_email(
+            "🚀 System Started",
+            "Xenia Trading System has been started successfully.",
+            "<h2>🚀 System Started</h2><p>Xenia Trading System has been started successfully.</p>"
         )
 
-    # Show portfolio status
-    print("\n" + "=" * 60)
-    print("PORTFOLIO STATUS")
-    print("=" * 60)
-
-    portfolio = system.get_portfolio_status()
-    print(f"Cash: ${portfolio['cash']:.2f}")
-    print(f"Total Value: ${portfolio['total_value']:.2f}")
-    print(f"Total Return: {portfolio['total_return']:.2f}%")
-
-    if portfolio["positions"]:
-        print("\nPositions:")
-        for symbol, position in portfolio["positions"].items():
-            print(
-                f"{symbol}: {position['shares']:.2f} shares @ ${position['current_price']:.2f} = ${position['value']:.2f}"
+        try:
+            while self.running:
+                # Check if market is open
+                if self.market_checker.is_market_open():
+                    await self.run_trading_cycle()
+                    
+                    # Wait for the specified interval
+                    wait_seconds = self.config.run_interval_hours * 3600
+                    print(f"\nWaiting {self.config.run_interval_hours} hours until next cycle...")
+                    
+                    for remaining in range(wait_seconds, 0, -1):
+                        if not self.running:
+                            break
+                        
+                        hours = remaining // 3600
+                        minutes = (remaining % 3600) // 60
+                        seconds = remaining % 60
+                        
+                        print(f"\rNext cycle in: {hours:02d}:{minutes:02d}:{seconds:02d}", end="")
+                        await asyncio.sleep(1)
+                    
+                    print()  # New line after countdown
+                else:
+                    # Market is closed, wait until it opens with countdown
+                    time_until_open = self.market_checker.time_until_market_open()
+                    print(f"Market is closed. Waiting until market opens...")
+                    
+                    # Convert to total seconds for countdown
+                    wait_seconds = int(time_until_open.total_seconds())
+                    
+                    for remaining in range(wait_seconds, 0, -1):
+                        if not self.running:
+                            break
+                        
+                        # Calculate days, hours, minutes, seconds
+                        days = remaining // 86400
+                        hours = (remaining % 86400) // 3600
+                        minutes = (remaining % 3600) // 60
+                        seconds = remaining % 60
+                        
+                        # Format countdown display
+                        if days > 0:
+                            countdown_str = f"{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
+                        else:
+                            countdown_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        
+                        print(f"\rMarket opens in: {countdown_str}", end="")
+                        await asyncio.sleep(1)
+                    
+                    print()  # New line after countdown               
+        except KeyboardInterrupt:
+            print("\nShutting down system...")
+        finally:
+            self.running = False
+            # Send shutdown notification
+            self.email_service.send_email(
+                "⏹️ System Stopped",
+                "Xenia Trading System has been stopped.",
+                "<h2>⏹️ System Stopped</h2><p>Xenia Trading System has been stopped.</p>"
             )
+    
+    def stop_system(self) -> None:
+        """Stop the automated trading system"""
+        if not self.running:
+            print("System is not running!")
+            return
+        
+        self.running = False
+        print("Stopping system...")
+    
+    def interactive_mode(self) -> None:
+        """Interactive command mode"""
+        print("\n🚀 Welcome to Xenia Trading System CLI")
+        print("Type 'help' for available commands")
+        
+        while True:
+            try:
+                command = input("\nxenia> ").strip().lower()
+                
+                if command == 'help':
+                    self.show_help()
+                elif command == 'status':
+                    self.show_status()
+                elif command == 'toggle-live':
+                    self.toggle_live_trading()
+                elif command == 'toggle-monte':
+                    self.toggle_monte_carlo()
+                elif command == 'toggle-email':
+                    self.toggle_email_notifications()
+                elif command.startswith('interval '):
+                    try:
+                        hours = int(command.split()[1])
+                        self.set_interval(hours)
+                    except (IndexError, ValueError):
+                        print("Usage: interval <hours>")
+                elif command.startswith('email-config '):
+                    try:
+                        parts = command.split()
+                        if len(parts) >= 3:
+                            sender_email = parts[1]
+                            sender_password = parts[2]
+                            self.configure_email(sender_email, sender_password)
+                        else:
+                            print("Usage: email-config <sender_email> <sender_password>")
+                    except (IndexError, ValueError):
+                        print("Usage: email-config <sender_email> <sender_password>")
+                elif command == 'test-email':
+                    self.test_email()
+                elif command == 'start':
+                    asyncio.run(self.start_system())
+                elif command == 'stop':
+                    self.stop_system()
+                elif command == 'run-once':
+                    asyncio.run(self.run_trading_cycle())
+                elif command == 'config':
+                    self.show_config()
+                elif command in ['exit', 'quit', 'q']:
+                    print("Goodbye!")
+                    break
+                else:
+                    print("Unknown command. Type 'help' for available commands.")
+                    
+            except KeyboardInterrupt:
+                print("\nUse 'exit' to quit")
+            except Exception as e:
+                print(f"Error: {e}")
+                self.email_service.send_error_notification(str(e), "Interactive mode")
+    
+    def test_email(self) -> None:
+        """Send a test email"""
+        if not self.config.email_config.sender_email or not self.config.email_config.sender_password:
+            print("Email not configured. Use 'email-config' command first.")
+            return
+        
+        success = self.email_service.send_email(
+            "Test Email",
+            "This is a test email from Xenia Trading System.",
+            "<h2>📧 Test Email</h2><p>This is a test email from Xenia Trading System.</p><p>If you receive this, email notifications are working correctly!</p>"
+        )
+        
+        if success:
+            print("✅ Test email sent successfully!")
+        else:
+            print("❌ Failed to send test email. Check your email configuration.")
+    
+    def show_help(self) -> None:
+        """Show help information"""
+        print("\n📋 Available Commands:")
+        print("  help              - Show this help message")
+        print("  status            - Show system status")
+        print("  toggle-live       - Toggle live trading on/off")
+        print("  toggle-monte      - Toggle Monte Carlo analysis on/off")
+        print("  toggle-email      - Toggle email notifications on/off")
+        print("  interval <n>      - Set run interval to n hours")
+        print("  email-config <email> <password> - Configure email credentials")
+        print("  test-email        - Send a test email")
+        print("  start             - Start automated trading system")
+        print("  stop              - Stop automated trading system")
+        print("  run-once          - Run one trading cycle immediately")
+        print("  config            - Show current configuration")
+        print("  exit/quit/q       - Exit the program")
+    
+    def show_config(self) -> None:
+        """Show current configuration"""
+        print("\n⚙️  Current Configuration:")
+        print(f"  Live Trading: {self.config.live_trading}")
+        print(f"  Monte Carlo: {self.config.enable_monte_carlo}")
+        print(f"  Monte Carlo Simulations: {self.config.monte_carlo_simulations}")
+        print(f"  Forecast Days: {self.config.forecast_days}")
+        print(f"  Run Interval: {self.config.run_interval_hours} hours")
+        print(f"  Initial Balance: ${self.config.initial_balance}")
+        print(f"  Risk per Trade: {self.config.risk_per_trade * 100}%")
+        print(f"  Symbols: {', '.join(self.config.symbols)}")
+        print(f"  API Key: {'***' if self.config.api_key else 'Not set'}")
+        print(f"\n📧 Email Configuration:")
+        print(f"  Enabled: {self.config.email_config.enabled}")
+        print(f"  Sender Email: {'***' if self.config.email_config.sender_email else 'Not set'}")
+        print(f"  Recipient: {self.config.email_config.recipient_email}")
+        print(f"  Send Signals: {self.config.email_config.send_on_signals}")
+        print(f"  Send Trades: {self.config.email_config.send_on_trades}")
+        print(f"  Send Errors: {self.config.email_config.send_on_errors}")
+        print(f"  Daily Summary: {self.config.email_config.send_daily_summary}")
 
+def main():
+    """Main CLI entry point"""
+    parser = argparse.ArgumentParser(
+        description="Xenia Trading System CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument(
+        '--live', 
+        action='store_true',
+        help='Enable live trading mode'
+    )
+    
+    parser.add_argument(
+        '--monte-carlo',
+        action='store_true',
+        help='Enable Monte Carlo analysis'
+    )
+    
+    parser.add_argument(
+        '--interval',
+        type=int,
+        default=24,
+        help='Run interval in hours (default: 24)'
+    )
+    
+    parser.add_argument(
+        '--api-key',
+        type=str,
+        help='API key for live trading'
+    )
+    
+    parser.add_argument(
+        '--api-secret',
+        type=str,
+        help='API secret for live trading'
+    )
+    
+    parser.add_argument(
+        '--email-sender',
+        type=str,
+        help='Email sender address'
+    )
+    
+    parser.add_argument(
+        '--email-password',
+        type=str,
+        help='Email sender password'
+    )
+    
+    parser.add_argument(
+        '--disable-email',
+        action='store_true',
+        help='Disable email notifications'
+    )
+    
+    parser.add_argument(
+        '--run-once',
+        action='store_true',
+        help='Run one trading cycle and exit'
+    )
+    
+    parser.add_argument(
+        '--start',
+        action='store_true',
+        help='Start the automated trading system'
+    )
+    
+    args = parser.parse_args()
+    
+    # Create CLI instance
+    cli = XeniaCLI()
+    cli.load_config()
+    
+    # Apply command line arguments
+    if args.live:
+        cli.config.live_trading = True
+    
+    if args.monte_carlo:
+        cli.config.enable_monte_carlo = True
+    
+    if args.interval:
+        cli.config.run_interval_hours = args.interval
+    
+    if args.api_key and args.api_secret:
+        cli.configure_api(args.api_key, args.api_secret)
+    
+    if args.email_sender and args.email_password:
+        cli.configure_email(args.email_sender, args.email_password)
+    
+    if args.disable_email:
+        cli.config.email_config.enabled = False
+    
+    cli.save_config()
+    
+    # Execute based on arguments
+    if args.run_once:
+        asyncio.run(cli.run_trading_cycle())
+    elif args.start:
+        asyncio.run(cli.start_system())
+    else:
+        # Enter interactive mode
+        cli.interactive_mode()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
