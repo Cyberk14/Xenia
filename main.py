@@ -241,7 +241,7 @@ class YFinanceDataFetcher(DataFetcher):
         """Fetch data using datastream fetcher"""
         try:
             if config.lookback_days:
-                data = self.datastream_fetcher._fetch_ohlcv_sync(
+                data = await self.datastream_fetcher.fetch_ohlcv(
                     config.symbol,
                     resolution=config.resolution,
                     lookback_days=config.lookback_days,
