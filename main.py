@@ -23,8 +23,7 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 from datetime import datetime, timedelta
 import warnings
-
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
 import ta
 
@@ -45,6 +44,19 @@ class DataFetcherConfig:
     max_retries: int = 3
     rate_limit_interval: float = 1.0
 
+@dataclass
+class EmailConfig:
+    """Configuration for email notifications"""
+    enabled: bool = True
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    sender_email: str = ""
+    sender_password: str = ""
+    recipient_email: str = "void.ynd@gmail.com"
+    send_on_signals: bool = True
+    send_on_trades: bool = True
+    send_on_errors: bool = True
+    send_daily_summary: bool = True
 
 @dataclass
 class TradingConfig:
@@ -57,6 +69,43 @@ class TradingConfig:
     confidence_threshold: float = 0.4
     max_position_size: float = 0.2
     min_fetch_interval: float = 1.0
+
+    # Trading parameters
+    live_trading: bool = False
+    enable_monte_carlo: bool = False
+    monte_carlo_simulations: int = 10000
+    forecast_days: int = 252
+    
+    # Timing parameters
+    run_interval_hours: int = 24
+    market_timezone: str = "US/Eastern"  # NYSE/NASDAQ timezone
+    local_timezone: str = "Africa/Kampala"  # Uganda timezone
+    
+    # Portfolio parameters
+    risk_per_trade: float = 0.1  # buying power per trade
+    
+    # API credentials (to be loaded from environment or config)
+    api_key: str = ""
+    api_secret: str = ""
+    
+    # Trading symbols
+    symbols: list = None
+    
+    # Email configuration
+    email_config: EmailConfig = None
+    
+    def __post_init__(self):
+        if self.symbols is None:
+            self.symbols = [
+                "AAPL",  # AI investments + positioning in "Magnificent Seven"
+                "MSFT",  # Cloud/AI infrastructure benefit
+                "NVDA",  # Upgraded targets; Blackwell chips; continued AI tailwinds
+                "AMZN",  # Heavy cloud spending, large-cap AI exposure
+                # Add more symbols as needed
+            ]
+        
+        if self.email_config is None:
+            self.email_config = EmailConfig()
 
 
 @dataclass
@@ -262,17 +311,18 @@ class YFinanceDataFetcher(DataFetcher):
                     None, self._fetch_datastream_data, config
                 )
                 keys = {
-                    "open": "Open",
-                    "high": "High",
-                    "low": "Low",
-                    "close": "Close",
-                    "volume": "Volume",
+                    'open': "Open",
+                    'high': 'High',
+                    'low': "Low",
+                    'close': "Close",
+                    'volume': "Volume"
                 }
 
                 data.rename(columns=keys, inplace=True)
                 if data is not None and self.validate_data(data):
+                    
                     return data
-
+            
                 # Fallback to yfinance
             data = await asyncio.get_event_loop().run_in_executor(
                 None, self._fetch_yfinance_data, config
@@ -818,7 +868,9 @@ class BasicTradeExecutor(TradeExecutor):
                 new_balance = balance + net_revenue
 
                 # Calculate P&L using stored purchase price
-                purchase_price = self.purchase_prices.get(symbol, price)
+                purchase_price = self.purchase_prices.get(
+                    symbol, price
+                )  
                 cost_basis = shares * purchase_price
                 pnl = net_revenue - cost_basis
                 pnl_pct = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
@@ -854,9 +906,8 @@ class BasicTradeExecutor(TradeExecutor):
             print(f"Error executing sell for {symbol}: {e}")
             return positions, balance, None
 
-
 # SET STYLE
-plt.style.use("seaborn-v0_8-darkgrid")
+plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
 # ADD THESE CLASSES TO YOUR EXISTING CODE
@@ -872,291 +923,274 @@ import pandas as pd
 class MonteCarloSimulator:
     """
     🎲 Advanced Monte Carlo Simulation Engine for Portfolio Risk Analysis
-
+    
     Provides sophisticated statistical modeling for portfolio forecasting
     and risk assessment using Monte Carlo methods.
     """
-
+    
     def __init__(self, trading_system):
         self.trading_system = trading_system
         self.simulations = []
         self.color_palette = {
-            "primary": "#00D4AA",
-            "secondary": "#6C7CE7",
-            "accent": "#FF6B9D",
-            "warning": "#FFB800",
-            "success": "#00E676",
-            "error": "#FF5252",
+            'primary': '#00D4AA',
+            'secondary': '#6C7CE7',
+            'accent': '#FF6B9D',
+            'warning': '#FFB800',
+            'success': '#00E676',
+            'error': '#FF5252'
         }
-
+        
     def run_monte_carlo(self, num_simulations=1000, forecast_days=252):
         """
         Execute Monte Carlo simulation suite
-
+        
         Args:
             num_simulations (int): Number of simulation paths to generate
             forecast_days (int): Trading days to forecast (default: 252 = 1 year)
-
+        
         Returns:
             list: Complete simulation results with statistical metrics
         """
         print(f"\n🎲 Initializing Monte Carlo Engine...")
         print(f"📊 Running {num_simulations:,} simulations over {forecast_days} days")
         print(f"⚡ Processing simulation paths...")
-
+        
         simulations = []
         progress_milestones = [0.1, 0.25, 0.5, 0.75, 0.9, 1.0]
-
+        
         for sim in range(num_simulations):
             progress = (sim + 1) / num_simulations
-
+            
             # Update progress bar in place
             percentage = progress * 100
             bar_length = 30
             filled_length = int(bar_length * progress)
-            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+            bar = '█' * filled_length + '░' * (bar_length - filled_length)
             print(f"\r🔄 [{bar}] {percentage:.1f}% Complete", end="")
-
+            
             sim_result = self._run_single_simulation(forecast_days)
             simulations.append(sim_result)
 
         # Print final bar and newline when done
         print(f"\r🔄 [{bar}] {percentage:.1f}% Complete")
-
+            
         print(f"✅ Monte Carlo simulation complete!")
         print(f"📈 Generated {len(simulations):,} portfolio paths")
-
+        
         self.simulations = simulations
         return simulations
-
+    
     def _run_single_simulation(self, forecast_days):
         """Execute individual simulation path with enhanced risk modeling"""
         portfolio = self.trading_system.get_portfolio_status()
-        initial_value = portfolio["total_value"]
-
+        initial_value = portfolio['total_value']
+        
         # Enhanced return calculation with volatility clustering
         daily_returns = {}
         for symbol in self.trading_system.symbols:
             if symbol in self.trading_system.data:
-                prices = self.trading_system.data[symbol]["Close"]
+                prices = self.trading_system.data[symbol]['Close']
                 returns = prices.pct_change().dropna()
-
+                
                 # Calculate advanced statistics
                 daily_returns[symbol] = {
-                    "mean": returns.mean(),
-                    "std": returns.std(),
-                    "skew": returns.skew(),
-                    "kurtosis": returns.kurtosis(),
-                    "last_price": prices.iloc[-1],
-                    "volatility_regime": self._detect_volatility_regime(returns),
+                    'mean': returns.mean(),
+                    'std': returns.std(),
+                    'skew': returns.skew(),
+                    'kurtosis': returns.kurtosis(),
+                    'last_price': prices.iloc[-1],
+                    'volatility_regime': self._detect_volatility_regime(returns)
                 }
-
+        
         # Enhanced portfolio simulation with regime switching
         portfolio_values = [initial_value]
         current_value = initial_value
         daily_returns_series = []
-
+        
         for day in range(forecast_days):
             portfolio_return = 0
             total_weight = 0
-
+            
             # Calculate position-weighted returns with correlation effects
             for symbol in self.trading_system.symbols:
-                if (
-                    symbol in self.trading_system.positions
-                    and self.trading_system.positions[symbol] > 0
-                ):
+                if symbol in self.trading_system.positions and self.trading_system.positions[symbol] > 0:
                     if symbol in daily_returns:
-                        weight = (
-                            self.trading_system.positions[symbol]
-                            * daily_returns[symbol]["last_price"]
-                        ) / current_value
-
+                        weight = (self.trading_system.positions[symbol] * daily_returns[symbol]['last_price']) / current_value
+                        
                         # Enhanced return simulation with fat tails
-                        base_return = daily_returns[symbol]["mean"]
-                        volatility = daily_returns[symbol]["std"]
-
+                        base_return = daily_returns[symbol]['mean']
+                        volatility = daily_returns[symbol]['std']
+                        
                         # Apply volatility regime adjustment
-                        if daily_returns[symbol]["volatility_regime"] == "high":
+                        if daily_returns[symbol]['volatility_regime'] == 'high':
                             volatility *= 1.5
-
+                        
                         simulated_return = np.random.normal(base_return, volatility)
-
+                        
                         # Add occasional extreme events (fat tails)
                         if np.random.random() < 0.05:  # 5% chance of extreme event
                             simulated_return *= np.random.choice([-2, 2])
-
+                        
                         portfolio_return += weight * simulated_return
                         total_weight += weight
-
+            
             daily_returns_series.append(portfolio_return)
-            current_value *= 1 + portfolio_return
+            current_value *= (1 + portfolio_return)
             portfolio_values.append(current_value)
-
+        
         return {
-            "values": portfolio_values,
-            "returns": daily_returns_series,
-            "final_value": current_value,
-            "total_return": (current_value - initial_value) / initial_value * 100,
-            "max_drawdown": self._calculate_max_drawdown(portfolio_values),
-            "volatility": np.std(daily_returns_series) * np.sqrt(252) * 100,
-            "var_95": np.percentile(daily_returns_series, 5) * 100,
-            "cvar_95": np.mean(
-                [
-                    r
-                    for r in daily_returns_series
-                    if r <= np.percentile(daily_returns_series, 5)
-                ]
-            )
-            * 100,
+            'values': portfolio_values,
+            'returns': daily_returns_series,
+            'final_value': current_value,
+            'total_return': (current_value - initial_value) / initial_value * 100,
+            'max_drawdown': self._calculate_max_drawdown(portfolio_values),
+            'volatility': np.std(daily_returns_series) * np.sqrt(252) * 100,
+            'var_95': np.percentile(daily_returns_series, 5) * 100,
+            'cvar_95': np.mean([r for r in daily_returns_series if r <= np.percentile(daily_returns_series, 5)]) * 100
         }
-
+    
     def _detect_volatility_regime(self, returns):
         """Detect current volatility regime"""
         recent_vol = returns.tail(30).std()
         historical_vol = returns.std()
-
-        return "high" if recent_vol > historical_vol * 1.5 else "normal"
-
+        
+        return 'high' if recent_vol > historical_vol * 1.5 else 'normal'
+    
     def _calculate_max_drawdown(self, values):
         """Calculate maximum drawdown with enhanced precision"""
         if len(values) < 2:
             return 0
-
+            
         peak = values[0]
         max_dd = 0
-
+        
         for value in values[1:]:
             if value > peak:
                 peak = value
             drawdown = (peak - value) / peak
             max_dd = max(max_dd, drawdown)
-
+                
         return max_dd * 100
-
+    
     def get_statistics(self):
         """Generate comprehensive Monte Carlo statistics"""
         if not self.simulations:
             return None
-
-        final_values = [sim["final_value"] for sim in self.simulations]
-        returns = [sim["total_return"] for sim in self.simulations]
-        drawdowns = [sim["max_drawdown"] for sim in self.simulations]
-        volatilities = [sim["volatility"] for sim in self.simulations]
-        vars_95 = [sim["var_95"] for sim in self.simulations]
-        cvars_95 = [sim["cvar_95"] for sim in self.simulations]
-
+            
+        final_values = [sim['final_value'] for sim in self.simulations]
+        returns = [sim['total_return'] for sim in self.simulations]
+        drawdowns = [sim['max_drawdown'] for sim in self.simulations]
+        volatilities = [sim['volatility'] for sim in self.simulations]
+        vars_95 = [sim['var_95'] for sim in self.simulations]
+        cvars_95 = [sim['cvar_95'] for sim in self.simulations]
+        
         return {
-            "simulation_count": len(self.simulations),
-            "final_value": {
-                "mean": np.mean(final_values),
-                "median": np.median(final_values),
-                "std": np.std(final_values),
-                "min": np.min(final_values),
-                "max": np.max(final_values),
-                "percentile_5": np.percentile(final_values, 5),
-                "percentile_10": np.percentile(final_values, 10),
-                "percentile_25": np.percentile(final_values, 25),
-                "percentile_75": np.percentile(final_values, 75),
-                "percentile_90": np.percentile(final_values, 90),
-                "percentile_95": np.percentile(final_values, 95),
+            'simulation_count': len(self.simulations),
+            'final_value': {
+                'mean': np.mean(final_values),
+                'median': np.median(final_values),
+                'std': np.std(final_values),
+                'min': np.min(final_values),
+                'max': np.max(final_values),
+                'percentile_5': np.percentile(final_values, 5),
+                'percentile_10': np.percentile(final_values, 10),
+                'percentile_25': np.percentile(final_values, 25),
+                'percentile_75': np.percentile(final_values, 75),
+                'percentile_90': np.percentile(final_values, 90),
+                'percentile_95': np.percentile(final_values, 95)
             },
-            "returns": {
-                "mean": np.mean(returns),
-                "median": np.median(returns),
-                "std": np.std(returns),
-                "min": np.min(returns),
-                "max": np.max(returns),
-                "percentile_5": np.percentile(returns, 5),
-                "percentile_10": np.percentile(returns, 10),
-                "percentile_25": np.percentile(returns, 25),
-                "percentile_75": np.percentile(returns, 75),
-                "percentile_90": np.percentile(returns, 90),
-                "percentile_95": np.percentile(returns, 95),
+            'returns': {
+                'mean': np.mean(returns),
+                'median': np.median(returns),
+                'std': np.std(returns),
+                'min': np.min(returns),
+                'max': np.max(returns),
+                'percentile_5': np.percentile(returns, 5),
+                'percentile_10': np.percentile(returns, 10),
+                'percentile_25': np.percentile(returns, 25),
+                'percentile_75': np.percentile(returns, 75),
+                'percentile_90': np.percentile(returns, 90),
+                'percentile_95': np.percentile(returns, 95)
             },
-            "risk_metrics": {
-                "max_drawdown": {
-                    "mean": np.mean(drawdowns),
-                    "median": np.median(drawdowns),
-                    "std": np.std(drawdowns),
-                    "max": np.max(drawdowns),
-                    "percentile_95": np.percentile(drawdowns, 95),
+            'risk_metrics': {
+                'max_drawdown': {
+                    'mean': np.mean(drawdowns),
+                    'median': np.median(drawdowns),
+                    'std': np.std(drawdowns),
+                    'max': np.max(drawdowns),
+                    'percentile_95': np.percentile(drawdowns, 95)
                 },
-                "volatility": {
-                    "mean": np.mean(volatilities),
-                    "median": np.median(volatilities),
-                    "std": np.std(volatilities),
+                'volatility': {
+                    'mean': np.mean(volatilities),
+                    'median': np.median(volatilities),
+                    'std': np.std(volatilities)
                 },
-                "var_95": {"mean": np.mean(vars_95), "median": np.median(vars_95)},
-                "cvar_95": {"mean": np.mean(cvars_95), "median": np.median(cvars_95)},
+                'var_95': {
+                    'mean': np.mean(vars_95),
+                    'median': np.median(vars_95)
+                },
+                'cvar_95': {
+                    'mean': np.mean(cvars_95),
+                    'median': np.median(cvars_95)
+                }
             },
-            "probability_positive": len([r for r in returns if r > 0])
-            / len(returns)
-            * 100,
-            "probability_loss_10": len([r for r in returns if r < -10])
-            / len(returns)
-            * 100,
-            "probability_gain_20": len([r for r in returns if r > 20])
-            / len(returns)
-            * 100,
-            "sharpe_ratio": np.mean(returns) / np.std(returns)
-            if np.std(returns) > 0
-            else 0,
-            "sortino_ratio": np.mean(returns) / np.std([r for r in returns if r < 0])
-            if len([r for r in returns if r < 0]) > 0
-            else 0,
+            'probability_positive': len([r for r in returns if r > 0]) / len(returns) * 100,
+            'probability_loss_10': len([r for r in returns if r < -10]) / len(returns) * 100,
+            'probability_gain_20': len([r for r in returns if r > 20]) / len(returns) * 100,
+            'sharpe_ratio': np.mean(returns) / np.std(returns) if np.std(returns) > 0 else 0,
+            'sortino_ratio': np.mean(returns) / np.std([r for r in returns if r < 0]) if len([r for r in returns if r < 0]) > 0 else 0
         }
 
 
 class ProfessionalVisualizer:
     """
     🎨 Professional Trading System Visualization Engine
-
+    
     Creates sophisticated, interactive dashboards and reports for institutional
     and retail investors with modern design principles and comprehensive analytics.
     """
-
+    
     def __init__(self, trading_system, monte_carlo_simulator=None):
         self.trading_system = trading_system
         self.monte_carlo = monte_carlo_simulator
-
+        
         # Professional color palette
         self.colors = {
-            "primary": "#00D4AA",  # Teal Green
-            "secondary": "#6C7CE7",  # Soft Purple
-            "accent": "#FF6B9D",  # Pink Accent
-            "warning": "#FFB800",  # Amber
-            "success": "#00E676",  # Green
-            "error": "#FF5252",  # Red
-            "neutral": "#90A4AE",  # Blue Grey
-            "dark": "#263238",  # Dark Blue Grey
-            "light": "#F8F9FA",  # Light Grey
-            "background": "#1E1E1E",  # Dark Background
-            "surface": "#2D2D2D",  # Surface
-            "text": "#FFFFFF",  # White Text
-            "text_secondary": "#B0BEC5",  # Secondary Text
+            'primary': '#00D4AA',      # Teal Green
+            'secondary': '#6C7CE7',    # Soft Purple
+            'accent': '#FF6B9D',       # Pink Accent
+            'warning': '#FFB800',      # Amber
+            'success': '#00E676',      # Green
+            'error': '#FF5252',        # Red
+            'neutral': '#90A4AE',      # Blue Grey
+            'dark': '#263238',         # Dark Blue Grey
+            'light': '#F8F9FA',        # Light Grey
+            'background': '#1E1E1E',   # Dark Background
+            'surface': '#2D2D2D',      # Surface
+            'text': '#FFFFFF',         # White Text
+            'text_secondary': '#B0BEC5' # Secondary Text
         }
-
+        
         # Professional theme configuration
         self.theme = {
-            "template": "plotly_dark",
-            "font_family": 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            "title_font_size": 28,
-            "subtitle_font_size": 16,
-            "axis_font_size": 12,
-            "legend_font_size": 11,
-            "paper_bgcolor": self.colors["background"],
-            "plot_bgcolor": self.colors["surface"],
-            "grid_color": "#404040",
-            "line_width": 2.5,
-            "marker_size": 8,
-            "border_radius": 8,
+            'template': 'plotly_dark',
+            'font_family': 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            'title_font_size': 28,
+            'subtitle_font_size': 16,
+            'axis_font_size': 12,
+            'legend_font_size': 11,
+            'paper_bgcolor': self.colors['background'],
+            'plot_bgcolor': self.colors['surface'],
+            'grid_color': '#404040',
+            'line_width': 2.5,
+            'marker_size': 8,
+            'border_radius': 8
         }
-
+        
     def create_executive_dashboard(self, save_path=None):
         """
         Create a comprehensive executive dashboard with professional styling
-
+        
         Features:
         - Real-time portfolio performance metrics
         - Risk analysis with Monte Carlo projections
@@ -1166,546 +1200,473 @@ class ProfessionalVisualizer:
         """
         print("\n🎨 Creating Executive Dashboard...")
         print("📊 Generating professional visualizations...")
-
+        
         # Create enhanced subplot layout
         fig = make_subplots(
-            rows=4,
-            cols=3,
+            rows=4, cols=3,
             subplot_titles=(
-                "📈 Portfolio Performance & Benchmark",
-                "📊 Returns Distribution Analysis",
-                "⚡ Risk & Performance Metrics",
-                "🎯 Trade Analysis & Execution",
-                "🏆 Symbol Performance Ranking",
-                "🎲 Monte Carlo Projections",
-                "📉 Drawdown & Risk Analysis",
-                "🔍 Signal Strength Matrix",
-                "📊 Confidence Intervals",
-                "💰 Asset Allocation",
-                "📈 Performance Attribution",
-                "🎯 Risk-Return Profile",
+                '📈 Portfolio Performance & Benchmark',
+                '📊 Returns Distribution Analysis', 
+                '⚡ Risk & Performance Metrics',
+                '🎯 Trade Analysis & Execution',
+                '🏆 Symbol Performance Ranking',
+                '🎲 Monte Carlo Projections',
+                '📉 Drawdown & Risk Analysis',
+                '🔍 Signal Strength Matrix',
+                '📊 Confidence Intervals',
+                '💰 Asset Allocation',
+                '📈 Performance Attribution',
+                '🎯 Risk-Return Profile'
             ),
             specs=[
                 [{"secondary_y": True}, {"type": "histogram"}, {"type": "bar"}],
                 [{"type": "scatter"}, {"type": "bar"}, {"type": "scatter"}],
                 [{"secondary_y": True}, {"type": "bar"}, {"type": "scatter"}],
-                [{"type": "pie"}, {"type": "bar"}, {"type": "xy"}],
+                [{"type": "pie"}, {"type": "bar"}, {"type": "xy"}]
             ],
             vertical_spacing=0.08,
-            horizontal_spacing=0.08,
+            horizontal_spacing=0.08
         )
-
+        
         # Generate all dashboard components
         self._add_enhanced_portfolio_performance(fig, row=1, col=1)
         self._add_enhanced_returns_distribution(fig, row=1, col=2)
         self._add_enhanced_risk_metrics(fig, row=1, col=3)
         self._add_enhanced_trade_analysis(fig, row=2, col=1)
         self._add_enhanced_symbol_performance(fig, row=2, col=2)
-
+        
         if self.monte_carlo:
             self._add_enhanced_monte_carlo_paths(fig, row=2, col=3)
-
+        
         self._add_enhanced_drawdown_analysis(fig, row=3, col=1)
         self._add_enhanced_signal_strength(fig, row=3, col=2)
-
+        
         if self.monte_carlo:
             self._add_enhanced_confidence_intervals(fig, row=3, col=3)
-
+        
         self._add_asset_allocation_pie(fig, row=4, col=1)
         self._add_performance_attribution(fig, row=4, col=2)
         self._add_risk_return_profile(fig, row=4, col=3)
-
+        
         # Apply professional styling
         fig.update_layout(
             height=1600,
             title={
-                "text": "🚀 XENIA V2 - Executive Trading Dashboard",
-                "x": 0.5,
-                "xanchor": "center",
-                "font": {
-                    "size": self.theme["title_font_size"],
-                    "family": self.theme["font_family"],
-                    "color": self.colors["text"],
-                },
+                'text': '🚀 XENIA V2 - Executive Trading Dashboard',
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {
+                    'size': self.theme['title_font_size'],
+                    'family': self.theme['font_family'],
+                    'color': self.colors['text']
+                }
             },
             font={
-                "family": self.theme["font_family"],
-                "size": self.theme["axis_font_size"],
-                "color": self.colors["text"],
+                'family': self.theme['font_family'],
+                'size': self.theme['axis_font_size'],
+                'color': self.colors['text']
             },
-            paper_bgcolor=self.colors["background"],
-            plot_bgcolor=self.colors["surface"],
+            paper_bgcolor=self.colors['background'],
+            plot_bgcolor=self.colors['surface'],
             showlegend=True,
             legend={
-                "bgcolor": "rgba(45, 45, 45, 0.8)",
-                "bordercolor": self.colors["neutral"],
-                "borderwidth": 1,
-                "font": {"size": self.theme["legend_font_size"]},
+                'bgcolor': 'rgba(45, 45, 45, 0.8)',
+                'bordercolor': self.colors['neutral'],
+                'borderwidth': 1,
+                'font': {'size': self.theme['legend_font_size']}
             },
             margin=dict(l=60, r=60, t=100, b=60),
-            template=self.theme["template"],
+            template=self.theme['template']
         )
-
+        
         # Update all subplot backgrounds
         for i in range(1, 13):
             fig.update_xaxes(
-                gridcolor=self.theme["grid_color"],
+                gridcolor=self.theme['grid_color'],
                 gridwidth=0.5,
-                title_font_size=self.theme["axis_font_size"],
-                tickfont_size=10,
+                title_font_size=self.theme['axis_font_size'],
+                tickfont_size=10
             )
             fig.update_yaxes(
-                gridcolor=self.theme["grid_color"],
+                gridcolor=self.theme['grid_color'],
                 gridwidth=0.5,
-                title_font_size=self.theme["axis_font_size"],
-                tickfont_size=10,
+                title_font_size=self.theme['axis_font_size'],
+                tickfont_size=10
             )
-
+        
         if save_path:
-            fig.write_html(save_path, config={"displayModeBar": False})
+            fig.write_html(save_path, config={'displayModeBar': False})
             print(f"✅ Dashboard saved to: {save_path}")
-
+        
         return fig
-
+        
     def _add_enhanced_portfolio_performance(self, fig, row, col):
         """Enhanced portfolio performance with benchmark comparison"""
         if not self.trading_system.trades:
             return
-
+            
         # Calculate portfolio performance over time
         dates = []
         portfolio_values = []
         benchmark_values = []
         current_balance = self.trading_system.trading_config.initial_balance
-
+        
         for i, trade in enumerate(self.trading_system.trades):
-            dates.append(trade["date"])
-
-            if trade["action"] == "BUY":
-                current_balance -= trade["cost"]
+            dates.append(trade['date'])
+            
+            if trade['action'] == 'BUY':
+                current_balance -= trade['cost']
             else:
-                current_balance += trade["revenue"]
-
+                current_balance += trade['revenue']
+                
             portfolio_values.append(current_balance)
             # Simple benchmark: flat growth
-            benchmark_values.append(
-                self.trading_system.trading_config.initial_balance
-                * (1 + 0.08 * i / len(self.trading_system.trades))
-            )
-
+            benchmark_values.append(self.trading_system.trading_config.initial_balance * (1 + 0.08 * i / len(self.trading_system.trades)))
+        
         # Portfolio performance line
         fig.add_trace(
             go.Scatter(
                 x=dates,
                 y=portfolio_values,
-                mode="lines+markers",
-                name="Portfolio Value",
-                line=dict(color=self.colors["primary"], width=3),
+                mode='lines+markers',
+                name='Portfolio Value',
+                line=dict(color=self.colors['primary'], width=3),
                 marker=dict(size=4),
-                hovertemplate="<b>Portfolio Value</b><br>"
-                + "Date: %{x}<br>"
-                + "Value: $%{y:,.2f}<br>"
-                + "<extra></extra>",
+                hovertemplate='<b>Portfolio Value</b><br>' +
+                            'Date: %{x}<br>' +
+                            'Value: $%{y:,.2f}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Benchmark line
         fig.add_trace(
             go.Scatter(
                 x=dates,
                 y=benchmark_values,
-                mode="lines",
-                name="Benchmark (8% Annual)",
-                line=dict(color=self.colors["neutral"], width=2, dash="dash"),
-                hovertemplate="<b>Benchmark</b><br>"
-                + "Date: %{x}<br>"
-                + "Value: $%{y:,.2f}<br>"
-                + "<extra></extra>",
+                mode='lines',
+                name='Benchmark (8% Annual)',
+                line=dict(color=self.colors['neutral'], width=2, dash='dash'),
+                hovertemplate='<b>Benchmark</b><br>' +
+                            'Date: %{x}<br>' +
+                            'Value: $%{y:,.2f}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add performance zones
         if len(portfolio_values) > 1:
             max_val = max(max(portfolio_values), max(benchmark_values))
             min_val = min(min(portfolio_values), min(benchmark_values))
-
+            
             fig.add_hrect(
-                y0=min_val,
-                y1=max_val * 0.3,
-                fillcolor=self.colors["error"],
-                opacity=0.1,
-                line_width=0,
-                row=row,
-                col=col,
+                y0=min_val, y1=max_val * 0.3,
+                fillcolor=self.colors['error'], opacity=0.1,
+                line_width=0, row=row, col=col
             )
             fig.add_hrect(
-                y0=max_val * 0.7,
-                y1=max_val,
-                fillcolor=self.colors["success"],
-                opacity=0.1,
-                line_width=0,
-                row=row,
-                col=col,
+                y0=max_val * 0.7, y1=max_val,
+                fillcolor=self.colors['success'], opacity=0.1,
+                line_width=0, row=row, col=col
             )
-
+    
     def _add_enhanced_returns_distribution(self, fig, row, col):
         """Enhanced returns distribution with statistical overlays"""
         if not self.trading_system.trades:
             return
-
-        sell_trades = [t for t in self.trading_system.trades if t["action"] == "SELL"]
+            
+        sell_trades = [t for t in self.trading_system.trades if t['action'] == 'SELL']
         if not sell_trades:
             return
-
-        returns = [t.get("pnl_pct", 0) for t in sell_trades]
-
+            
+        returns = [t.get('pnl_pct', 0) for t in sell_trades]
+        
         # Main histogram
         fig.add_trace(
             go.Histogram(
                 x=returns,
                 nbinsx=25,
-                name="Returns Distribution",
-                marker_color=self.colors["secondary"],
-                marker_line_color=self.colors["text"],
+                name='Returns Distribution',
+                marker_color=self.colors['secondary'],
+                marker_line_color=self.colors['text'],
                 marker_line_width=1,
                 opacity=0.8,
-                hovertemplate="<b>Returns Range</b><br>"
-                + "Range: %{x}<br>"
-                + "Count: %{y}<br>"
-                + "<extra></extra>",
+                hovertemplate='<b>Returns Range</b><br>' +
+                            'Range: %{x}<br>' +
+                            'Count: %{y}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add statistical markers
         mean_return = np.mean(returns)
         median_return = np.median(returns)
-
+        
         fig.add_vline(
-            x=mean_return,
-            line_width=2,
-            line_dash="dash",
-            line_color=self.colors["warning"],
+            x=mean_return, line_width=2, line_dash="dash",
+            line_color=self.colors['warning'],
             annotation_text=f"Mean: {mean_return:.1f}%",
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         fig.add_vline(
-            x=median_return,
-            line_width=2,
-            line_dash="dot",
-            line_color=self.colors["primary"],
+            x=median_return, line_width=2, line_dash="dot",
+            line_color=self.colors['primary'],
             annotation_text=f"Median: {median_return:.1f}%",
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+    
     def _add_enhanced_risk_metrics(self, fig, row, col):
         """Enhanced risk metrics with color coding"""
         portfolio = self.trading_system.get_portfolio_status()
-
-        metrics = ["Total Return %", "Sharpe Ratio", "Max Drawdown %", "Win Rate %"]
+        
+        metrics = ['Total Return %', 'Sharpe Ratio', 'Max Drawdown %', 'Win Rate %']
         values = [
-            portfolio.get("total_return", 0),
+            portfolio.get('total_return', 0),
             self._calculate_sharpe_ratio(),
             -abs(self._calculate_max_drawdown()),  # Negative for visual impact
-            self._calculate_win_rate(),
+            self._calculate_win_rate()
         ]
-
+        
         # Color coding based on performance
         colors = []
         for i, val in enumerate(values):
             if i == 0:  # Total Return
-                colors.append(
-                    self.colors["success"] if val > 0 else self.colors["error"]
-                )
+                colors.append(self.colors['success'] if val > 0 else self.colors['error'])
             elif i == 1:  # Sharpe Ratio
-                colors.append(
-                    self.colors["success"]
-                    if val > 1
-                    else self.colors["warning"]
-                    if val > 0
-                    else self.colors["error"]
-                )
+                colors.append(self.colors['success'] if val > 1 else self.colors['warning'] if val > 0 else self.colors['error'])
             elif i == 2:  # Max Drawdown
-                colors.append(
-                    self.colors["success"]
-                    if val > -10
-                    else self.colors["warning"]
-                    if val > -20
-                    else self.colors["error"]
-                )
+                colors.append(self.colors['success'] if val > -10 else self.colors['warning'] if val > -20 else self.colors['error'])
             else:  # Win Rate
-                colors.append(
-                    self.colors["success"]
-                    if val > 60
-                    else self.colors["warning"]
-                    if val > 40
-                    else self.colors["error"]
-                )
-
+                colors.append(self.colors['success'] if val > 60 else self.colors['warning'] if val > 40 else self.colors['error'])
+        
         fig.add_trace(
             go.Bar(
                 x=metrics,
                 y=values,
-                name="Risk Metrics",
+                name='Risk Metrics',
                 marker_color=colors,
-                marker_line_color=self.colors["text"],
+                marker_line_color=self.colors['text'],
                 marker_line_width=1,
-                text=[f"{v:.1f}" for v in values],
-                textposition="auto",
-                hovertemplate="<b>%{x}</b><br>"
-                + "Value: %{y:.2f}<br>"
-                + "<extra></extra>",
+                text=[f'{v:.1f}' for v in values],
+                textposition='auto',
+                hovertemplate='<b>%{x}</b><br>' +
+                            'Value: %{y:.2f}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+    
     def _add_enhanced_trade_analysis(self, fig, row, col):
         """Enhanced trade analysis with trend lines"""
-        sell_trades = [t for t in self.trading_system.trades if t["action"] == "SELL"]
+        sell_trades = [t for t in self.trading_system.trades if t['action'] == 'SELL']
         if not sell_trades:
             return
-
+            
         x_values = list(range(len(sell_trades)))
-        y_values = [t.get("pnl_pct", 0) for t in sell_trades]
-        trade_dates = [t["date"] for t in sell_trades]
-
+        y_values = [t.get('pnl_pct', 0) for t in sell_trades]
+        trade_dates = [t['date'] for t in sell_trades]
+        
         # Color code by performance
-        colors = [
-            self.colors["success"] if pnl > 0 else self.colors["error"]
-            for pnl in y_values
-        ]
-        sizes = [
-            max(8, min(20, abs(pnl) / 2)) for pnl in y_values
-        ]  # Size based on magnitude
-
+        colors = [self.colors['success'] if pnl > 0 else self.colors['error'] for pnl in y_values]
+        sizes = [max(8, min(20, abs(pnl) / 2)) for pnl in y_values]  # Size based on magnitude
+        
         fig.add_trace(
             go.Scatter(
                 x=x_values,
                 y=y_values,
-                mode="markers",
-                name="Trade P&L",
+                mode='markers',
+                name='Trade P&L',
                 marker=dict(
                     color=colors,
                     size=sizes,
-                    line=dict(width=1, color=self.colors["text"]),
-                    opacity=0.8,
+                    line=dict(width=1, color=self.colors['text']),
+                    opacity=0.8
                 ),
-                text=[
-                    f"Trade {i + 1}<br>{date}<br>{pnl:.1f}%"
-                    for i, (date, pnl) in enumerate(zip(trade_dates, y_values))
-                ],
-                hovertemplate="<b>%{text}</b><br>"
-                + "Trade #: %{x}<br>"
-                + "P&L: %{y:.2f}%<br>"
-                + "<extra></extra>",
+                text=[f'Trade {i+1}<br>{date}<br>{pnl:.1f}%' for i, (date, pnl) in enumerate(zip(trade_dates, y_values))],
+                hovertemplate='<b>%{text}</b><br>' +
+                            'Trade #: %{x}<br>' +
+                            'P&L: %{y:.2f}%<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add trend line
         if len(y_values) > 1:
             z = np.polyfit(x_values, y_values, 1)
             p = np.poly1d(z)
             trend_line = p(x_values)
-
+            
             fig.add_trace(
                 go.Scatter(
                     x=x_values,
                     y=trend_line,
-                    mode="lines",
-                    name="Trend",
-                    line=dict(color=self.colors["accent"], width=2, dash="dash"),
-                    showlegend=False,
+                    mode='lines',
+                    name='Trend',
+                    line=dict(color=self.colors['accent'], width=2, dash='dash'),
+                    showlegend=False
                 ),
-                row=row,
-                col=col,
+                row=row, col=col
             )
-
+        
         # Add zero line
         fig.add_hline(
-            y=0,
-            line_width=1,
-            line_dash="dot",
-            line_color=self.colors["neutral"],
-            row=row,
-            col=col,
+            y=0, line_width=1, line_dash="dot",
+            line_color=self.colors['neutral'],
+            row=row, col=col
         )
-
+    
     def _add_enhanced_symbol_performance(self, fig, row, col):
         """Enhanced symbol performance with ranking"""
         symbol_performance = {}
         symbol_trades = {}
-
+        
         for trade in self.trading_system.trades:
-            if trade["action"] == "SELL":
-                symbol = trade["symbol"]
-                pnl = trade.get("pnl", 0)
-
+            if trade['action'] == 'SELL':
+                symbol = trade['symbol']
+                pnl = trade.get('pnl', 0)
+                
                 if symbol not in symbol_performance:
                     symbol_performance[symbol] = 0
                     symbol_trades[symbol] = 0
-
+                
                 symbol_performance[symbol] += pnl
                 symbol_trades[symbol] += 1
-
+        
         if symbol_performance:
             # Sort by performance
-            sorted_symbols = sorted(
-                symbol_performance.items(), key=lambda x: x[1], reverse=True
-            )
+            sorted_symbols = sorted(symbol_performance.items(), key=lambda x: x[1], reverse=True)
             symbols = [s[0] for s in sorted_symbols]
             performance = [s[1] for s in sorted_symbols]
-
+            
             # Color gradient based on ranking
             colors = []
             for i, perf in enumerate(performance):
                 if perf > 0:
-                    intensity = min(
-                        1.0, perf / max(performance) if max(performance) > 0 else 0
-                    )
-                    colors.append(f"rgba(0, 230, 118, {0.5 + 0.5 * intensity})")
+                    intensity = min(1.0, perf / max(performance) if max(performance) > 0 else 0)
+                    colors.append(f'rgba(0, 230, 118, {0.5 + 0.5 * intensity})')
                 else:
-                    intensity = min(
-                        1.0,
-                        abs(perf) / abs(min(performance))
-                        if min(performance) < 0
-                        else 0,
-                    )
-                    colors.append(f"rgba(255, 82, 82, {0.5 + 0.5 * intensity})")
-
+                    intensity = min(1.0, abs(perf) / abs(min(performance)) if min(performance) < 0 else 0)
+                    colors.append(f'rgba(255, 82, 82, {0.5 + 0.5 * intensity})')
+            
             fig.add_trace(
                 go.Bar(
                     x=symbols,
                     y=performance,
-                    name="Symbol P&L",
+                    name='Symbol P&L',
                     marker_color=colors,
-                    marker_line_color=self.colors["text"],
+                    marker_line_color=self.colors['text'],
                     marker_line_width=1,
-                    text=[f"${p:.0f}" for p in performance],
-                    textposition="auto",
-                    hovertemplate="<b>%{x}</b><br>"
-                    + "P&L: $%{y:.2f}<br>"
-                    + "Trades: "
-                    + str([symbol_trades[s] for s in symbols])
-                    + "<br>"
-                    + "<extra></extra>",
+                    text=[f'${p:.0f}' for p in performance],
+                    textposition='auto',
+                    hovertemplate='<b>%{x}</b><br>' +
+                                'P&L: $%{y:.2f}<br>' +
+                                'Trades: ' + str([symbol_trades[s] for s in symbols]) + '<br>' +
+                                '<extra></extra>'
                 ),
-                row=row,
-                col=col,
+                row=row, col=col
             )
-
+    
     def _add_enhanced_monte_carlo_paths(self, fig, row, col):
         """Enhanced Monte Carlo paths with confidence bands"""
         if not self.monte_carlo or not self.monte_carlo.simulations:
             return
-
+        
         # Calculate percentiles for confidence bands
-        max_length = max(len(sim["values"]) for sim in self.monte_carlo.simulations)
-
+        max_length = max(len(sim['values']) for sim in self.monte_carlo.simulations)
+        
         # Collect all paths and calculate percentiles
         all_paths = []
         for sim in self.monte_carlo.simulations:
-            if len(sim["values"]) == max_length:
-                all_paths.append(sim["values"])
-
+            if len(sim['values']) == max_length:
+                all_paths.append(sim['values'])
+        
         if not all_paths:
             return
-
+        
         all_paths = np.array(all_paths)
         days = list(range(max_length))
-
+        
         # Calculate confidence intervals
         median_path = np.percentile(all_paths, 50, axis=0)
         upper_95 = np.percentile(all_paths, 95, axis=0)
         lower_5 = np.percentile(all_paths, 5, axis=0)
         upper_75 = np.percentile(all_paths, 75, axis=0)
         lower_25 = np.percentile(all_paths, 25, axis=0)
-
+        
         # Add confidence bands
         fig.add_trace(
             go.Scatter(
                 x=days + days[::-1],
                 y=np.concatenate([upper_95, lower_5[::-1]]),
-                fill="toself",
-                fillcolor=f"rgba({int(108)}, {int(124)}, {int(231)}, 0.1)",
-                line=dict(color="rgba(0,0,0,0)"),
-                name="95% Confidence",
-                showlegend=False,
+                fill='toself',
+                fillcolor=f'rgba({int(108)}, {int(124)}, {int(231)}, 0.1)',
+                line=dict(color='rgba(0,0,0,0)'),
+                name='95% Confidence',
+                showlegend=False
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         fig.add_trace(
             go.Scatter(
                 x=days + days[::-1],
                 y=np.concatenate([upper_75, lower_25[::-1]]),
-                fill="toself",
-                fillcolor=f"rgba({int(108)}, {int(124)}, {int(231)}, 0.2)",
-                line=dict(color="rgba(0,0,0,0)"),
-                name="50% Confidence",
-                showlegend=False,
+                fill='toself',
+                fillcolor=f'rgba({int(108)}, {int(124)}, {int(231)}, 0.2)',
+                line=dict(color='rgba(0,0,0,0)'),
+                name='50% Confidence',
+                showlegend=False
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add median path
         fig.add_trace(
             go.Scatter(
                 x=days,
                 y=median_path,
-                mode="lines",
-                name="Median Path",
-                line=dict(color=self.colors["secondary"], width=3),
-                hovertemplate="<b>Median Projection</b><br>"
-                + "Day: %{x}<br>"
-                + "Value: $%{y:,.2f}<br>"
-                + "<extra></extra>",
+                mode='lines',
+                name='Median Path',
+                line=dict(color=self.colors['secondary'], width=3),
+                hovertemplate='<b>Median Projection</b><br>' +
+                            'Day: %{x}<br>' +
+                            'Value: $%{y:,.2f}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add sample paths for context
-        sample_indices = np.random.choice(
-            len(self.monte_carlo.simulations),
-            min(10, len(self.monte_carlo.simulations)),
-            replace=False,
-        )
+        sample_indices = np.random.choice(len(self.monte_carlo.simulations), 
+                                        min(10, len(self.monte_carlo.simulations)), 
+                                        replace=False)
         for i in sample_indices:
             sim = self.monte_carlo.simulations[i]
-            if len(sim["values"]) == max_length:
+            if len(sim['values']) == max_length:
                 fig.add_trace(
                     go.Scatter(
                         x=days,
-                        y=sim["values"],
-                        mode="lines",
-                        name=f"Path {i + 1}",
-                        line=dict(color=self.colors["neutral"], width=0.5, dash="dot"),
+                        y=sim['values'],
+                        mode='lines',
+                        name=f'Path {i+1}',
+                        line=dict(color=self.colors['neutral'], width=0.5, dash='dot'),
                         opacity=0.3,
                         showlegend=False,
-                        hoverinfo="skip",
+                        hoverinfo='skip'
                     ),
-                    row=row,
-                    col=col,
+                    row=row, col=col
                 )
-
+    
     def _add_enhanced_drawdown_analysis(self, fig, row, col):
         """Enhanced drawdown analysis with underwater curve"""
         if not self.trading_system.trades:
             return
-
+            
         # Calculate running drawdown
         dates = []
         balances = []
@@ -1713,64 +1674,55 @@ class ProfessionalVisualizer:
         peak_balance = current_balance
         drawdowns = []
         underwater_periods = []
-
+        
         for trade in self.trading_system.trades:
-            dates.append(trade["date"])
-
-            if trade["action"] == "BUY":
-                current_balance -= trade["cost"]
+            dates.append(trade['date'])
+            
+            if trade['action'] == 'BUY':
+                current_balance -= trade['cost']
             else:
-                current_balance += trade["revenue"]
-
+                current_balance += trade['revenue']
+            
             if current_balance > peak_balance:
                 peak_balance = current_balance
-
+            
             drawdown = (peak_balance - current_balance) / peak_balance * 100
             drawdowns.append(drawdown)
-
+            
             # Track underwater periods
             if drawdown > 0:
-                underwater_periods.append(trade["date"])
-
+                underwater_periods.append(trade['date'])
+        
         # Main drawdown curve
         fig.add_trace(
             go.Scatter(
                 x=dates,
                 y=[-dd for dd in drawdowns],  # Negative for visual impact
-                mode="lines",
-                name="Drawdown %",
-                line=dict(color=self.colors["error"], width=2.5),
-                fill="tozeroy",
-                fillcolor=f"rgba(255, 82, 82, 0.3)",
-                hovertemplate="<b>Drawdown Analysis</b><br>"
-                + "Date: %{x}<br>"
-                + "Drawdown: %{y:.2f}%<br>"
-                + "<extra></extra>",
+                mode='lines',
+                name='Drawdown %',
+                line=dict(color=self.colors['error'], width=2.5),
+                fill='tozeroy',
+                fillcolor=f'rgba(255, 82, 82, 0.3)',
+                hovertemplate='<b>Drawdown Analysis</b><br>' +
+                            'Date: %{x}<br>' +
+                            'Drawdown: %{y:.2f}%<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add drawdown severity zones
         fig.add_hrect(
-            y0=-5,
-            y1=0,
-            fillcolor=self.colors["warning"],
-            opacity=0.1,
-            line_width=0,
-            row=row,
-            col=col,
+            y0=-5, y1=0,
+            fillcolor=self.colors['warning'], opacity=0.1,
+            line_width=0, row=row, col=col
         )
         fig.add_hrect(
-            y0=-10,
-            y1=-5,
-            fillcolor=self.colors["error"],
-            opacity=0.1,
-            line_width=0,
-            row=row,
-            col=col,
+            y0=-10, y1=-5,
+            fillcolor=self.colors['error'], opacity=0.1,
+            line_width=0, row=row, col=col
         )
-
+        
         # Add annotations for significant drawdowns
         max_drawdown = max(drawdowns) if drawdowns else 0
         if max_drawdown > 5:  # Only annotate significant drawdowns
@@ -1781,182 +1733,151 @@ class ProfessionalVisualizer:
                 text=f"Max DD: {max_drawdown:.1f}%",
                 showarrow=True,
                 arrowhead=2,
-                arrowcolor=self.colors["error"],
-                bgcolor=self.colors["surface"],
-                bordercolor=self.colors["error"],
-                row=row,
-                col=col,
+                arrowcolor=self.colors['error'],
+                bgcolor=self.colors['surface'],
+                bordercolor=self.colors['error'],
+                row=row, col=col
             )
-
+    
     def _add_enhanced_signal_strength(self, fig, row, col):
         """Enhanced signal strength analysis with confidence indicators"""
         signals = self.trading_system.get_current_signals()
-
+        
         if not signals:
             return
-
+        
         symbols = list(signals.keys())
-        signal_values = [signals[s]["combined_signal"] for s in symbols]
-        confidence_values = [signals[s]["confidence"] for s in symbols]
-
+        signal_values = [signals[s]['combined_signal'] for s in symbols]
+        confidence_values = [signals[s]['confidence'] for s in symbols]
+        
         # Create bubble chart where size represents confidence
         colors = []
         for signal in signal_values:
             if signal > 0.5:
-                colors.append(self.colors["success"])
+                colors.append(self.colors['success'])
             elif signal > 0:
-                colors.append(self.colors["warning"])
+                colors.append(self.colors['warning'])
             else:
-                colors.append(self.colors["error"])
-
+                colors.append(self.colors['error'])
+        
         fig.add_trace(
             go.Scatter(
                 x=symbols,
                 y=signal_values,
-                mode="markers",
-                name="Signal Strength",
+                mode='markers',
+                name='Signal Strength',
                 marker=dict(
                     color=colors,
                     size=[c * 30 + 10 for c in confidence_values],  # Size by confidence
-                    line=dict(width=2, color=self.colors["text"]),
-                    opacity=0.8,
+                    line=dict(width=2, color=self.colors['text']),
+                    opacity=0.8
                 ),
-                text=[
-                    f"{s}<br>Signal: {sig:.2f}<br>Confidence: {conf:.2f}"
-                    for s, sig, conf in zip(symbols, signal_values, confidence_values)
-                ],
-                hovertemplate="<b>%{text}</b><br>"
-                + "Signal: %{y:.3f}<br>"
-                + "<extra></extra>",
+                text=[f'{s}<br>Signal: {sig:.2f}<br>Confidence: {conf:.2f}' 
+                      for s, sig, conf in zip(symbols, signal_values, confidence_values)],
+                hovertemplate='<b>%{text}</b><br>' +
+                            'Signal: %{y:.3f}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add signal zones
         fig.add_hrect(
-            y0=0.5,
-            y1=1,
-            fillcolor=self.colors["success"],
-            opacity=0.1,
-            line_width=0,
-            row=row,
-            col=col,
+            y0=0.5, y1=1,
+            fillcolor=self.colors['success'], opacity=0.1,
+            line_width=0, row=row, col=col
         )
         fig.add_hrect(
-            y0=0,
-            y1=0.5,
-            fillcolor=self.colors["warning"],
-            opacity=0.1,
-            line_width=0,
-            row=row,
-            col=col,
+            y0=0, y1=0.5,
+            fillcolor=self.colors['warning'], opacity=0.1,
+            line_width=0, row=row, col=col
         )
         fig.add_hrect(
-            y0=-1,
-            y1=0,
-            fillcolor=self.colors["error"],
-            opacity=0.1,
-            line_width=0,
-            row=row,
-            col=col,
+            y0=-1, y1=0,
+            fillcolor=self.colors['error'], opacity=0.1,
+            line_width=0, row=row, col=col
         )
-
+    
     def _add_enhanced_confidence_intervals(self, fig, row, col):
         """Enhanced confidence intervals from Monte Carlo with risk metrics"""
         if not self.monte_carlo or not self.monte_carlo.simulations:
             return
-
+            
         stats = self.monte_carlo.get_statistics()
         if not stats:
             return
-
-        categories = [
-            "Expected Return",
-            "10th Percentile",
-            "90th Percentile",
-            "VaR (95%)",
-            "Best Case",
-        ]
+        
+        categories = ['Expected Return', '10th Percentile', '90th Percentile', 'VaR (95%)', 'Best Case']
         values = [
-            stats["returns"]["mean"],
-            stats["returns"]["percentile_10"],
-            stats["returns"]["percentile_90"],
-            stats["risk_metrics"]["var_95"]["mean"],
-            stats["returns"]["percentile_95"],
+            stats['returns']['mean'],
+            stats['returns']['percentile_10'],
+            stats['returns']['percentile_90'],
+            stats['risk_metrics']['var_95']['mean'],
+            stats['returns']['percentile_95']
         ]
-
+        
         # Color coding for risk levels
         colors = [
-            self.colors["primary"],  # Expected
-            self.colors["error"],  # 10th percentile
-            self.colors["success"],  # 90th percentile
-            self.colors["warning"],  # VaR
-            self.colors["accent"],  # Best case
+            self.colors['primary'],    # Expected
+            self.colors['error'],      # 10th percentile
+            self.colors['success'],    # 90th percentile
+            self.colors['warning'],    # VaR
+            self.colors['accent']      # Best case
         ]
-
+        
         fig.add_trace(
             go.Bar(
                 x=categories,
                 y=values,
-                name="Monte Carlo Results",
+                name='Monte Carlo Results',
                 marker_color=colors,
-                marker_line_color=self.colors["text"],
+                marker_line_color=self.colors['text'],
                 marker_line_width=1,
-                text=[f"{v:.1f}%" for v in values],
-                textposition="auto",
-                hovertemplate="<b>%{x}</b><br>"
-                + "Value: %{y:.2f}%<br>"
-                + f"Based on {stats['simulation_count']:,} simulations<br>"
-                + "<extra></extra>",
+                text=[f'{v:.1f}%' for v in values],
+                textposition='auto',
+                hovertemplate='<b>%{x}</b><br>' +
+                            'Value: %{y:.2f}%<br>' +
+                            f'Based on {stats["simulation_count"]:,} simulations<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add benchmark lines
         fig.add_hline(
-            y=0,
-            line_width=1,
-            line_dash="solid",
-            line_color=self.colors["neutral"],
-            row=row,
-            col=col,
+            y=0, line_width=1, line_dash="solid",
+            line_color=self.colors['neutral'],
+            row=row, col=col
         )
-
+    
     def _add_asset_allocation_pie(self, fig, row, col):
         """Add asset allocation pie chart"""
         portfolio = self.trading_system.get_portfolio_status()
-
-        if not portfolio.get("positions"):
+        
+        if not portfolio.get('positions'):
             return
-
+        
         labels = []
         values = []
         colors = []
-
+        
         # Add positions
-        for symbol, position in portfolio["positions"].items():
+        for symbol, position in portfolio['positions'].items():
             labels.append(symbol)
-            values.append(position["value"])
-            colors.append(self.colors["primary"])
-
+            values.append(position['value'])
+            colors.append(self.colors['primary'])
+        
         # Add cash
-        if portfolio.get("cash", 0) > 0:
-            labels.append("Cash")
-            values.append(portfolio["cash"])
-            colors.append(self.colors["neutral"])
-
+        if portfolio.get('cash', 0) > 0:
+            labels.append('Cash')
+            values.append(portfolio['cash'])
+            colors.append(self.colors['neutral'])
+        
         # Create color palette for positions
-        color_palette = [
-            self.colors["primary"],
-            self.colors["secondary"],
-            self.colors["accent"],
-            self.colors["warning"],
-            self.colors["success"],
-        ]
+        color_palette = [self.colors['primary'], self.colors['secondary'], self.colors['accent'], 
+                        self.colors['warning'], self.colors['success']]
         colors = [color_palette[i % len(color_palette)] for i in range(len(labels))]
-
+        
         # fig.add_trace(
         #     go.Pie(
         #         labels=labels,
@@ -1972,118 +1893,110 @@ class ProfessionalVisualizer:
         #     ),
         #     row=row, col=col
         # )
-
+    
     def _add_performance_attribution(self, fig, row, col):
         """Add performance attribution analysis"""
         symbol_performance = {}
-
+        
         for trade in self.trading_system.trades:
-            if trade["action"] == "SELL":
-                symbol = trade["symbol"]
-                pnl_pct = trade.get("pnl_pct", 0)
-
+            if trade['action'] == 'SELL':
+                symbol = trade['symbol']
+                pnl_pct = trade.get('pnl_pct', 0)
+                
                 if symbol not in symbol_performance:
                     symbol_performance[symbol] = []
                 symbol_performance[symbol].append(pnl_pct)
-
+        
         if symbol_performance:
             symbols = list(symbol_performance.keys())
             avg_returns = [np.mean(returns) for returns in symbol_performance.values()]
             volatilities = [np.std(returns) for returns in symbol_performance.values()]
-
-            colors = [
-                self.colors["success"] if ret > 0 else self.colors["error"]
-                for ret in avg_returns
-            ]
-
+            
+            colors = [self.colors['success'] if ret > 0 else self.colors['error'] for ret in avg_returns]
+            
             fig.add_trace(
                 go.Bar(
                     x=symbols,
                     y=avg_returns,
-                    name="Average Return",
+                    name='Average Return',
                     marker_color=colors,
-                    marker_line_color=self.colors["text"],
+                    marker_line_color=self.colors['text'],
                     marker_line_width=1,
                     error_y=dict(
-                        type="data",
+                        type='data',
                         array=volatilities,
                         visible=True,
-                        color=self.colors["neutral"],
+                        color=self.colors['neutral']
                     ),
-                    hovertemplate="<b>%{x}</b><br>"
-                    + "Avg Return: %{y:.2f}%<br>"
-                    + "Volatility: %{error_y.array:.2f}%<br>"
-                    + "<extra></extra>",
+                    hovertemplate='<b>%{x}</b><br>' +
+                                'Avg Return: %{y:.2f}%<br>' +
+                                'Volatility: %{error_y.array:.2f}%<br>' +
+                                '<extra></extra>'
                 ),
-                row=row,
-                col=col,
+                row=row, col=col
             )
+        
+    
+    
 
     def _add_risk_return_profile(self, fig, row, col):
         import logging
-
         """Add risk-return scatter plot to the specified subplot."""
 
         subplot_type = fig.get_subplot(row=row, col=col)
         print(subplot_type)
         symbol_performance = {}
-
+        
         # Collect performance data
         for trade in self.trading_system.trades:
-            if trade.get("action") == "SELL":
-                symbol = trade.get("symbol")
-                pnl_pct = trade.get("pnl_pct", 0)
+            if trade.get('action') == 'SELL':
+                symbol = trade.get('symbol')
+                pnl_pct = trade.get('pnl_pct', 0)
                 if not isinstance(pnl_pct, (int, float)):
-                    logging.warning(
-                        f"Invalid pnl_pct for trade {trade}: {pnl_pct}. Using 0."
-                    )
+                    logging.warning(f"Invalid pnl_pct for trade {trade}: {pnl_pct}. Using 0.")
                     pnl_pct = 0
                 if symbol:
                     if symbol not in symbol_performance:
                         symbol_performance[symbol] = []
                     symbol_performance[symbol].append(pnl_pct)
-
+        
         if not symbol_performance:
             logging.warning("No SELL trades found for risk-return profile.")
             return  # Skip plotting if no data
-
+        
         # Compute metrics
         symbols = list(symbol_performance.keys())
         avg_returns = [np.mean(returns) for returns in symbol_performance.values()]
         volatilities = [np.std(returns) for returns in symbol_performance.values()]
         trade_counts = [len(returns) for returns in symbol_performance.values()]
         sizes = [max(10, min(30, count * 3)) for count in trade_counts]
-        colors = [
-            self.colors["success"] if ret > 0 else self.colors["error"]
-            for ret in avg_returns
-        ]
-
+        colors = [self.colors['success'] if ret > 0 else self.colors['error'] for ret in avg_returns]
+        
         # Add scatter plot
         fig.add_trace(
             go.Scatter(
                 x=volatilities,
                 y=avg_returns,
-                mode="markers+text",
-                name="Risk-Return Profile",
+                mode='markers+text',
+                name='Risk-Return Profile',
                 text=symbols,
-                textposition="middle center",
+                textposition='middle center',
                 customdata=trade_counts,
                 marker=dict(
                     color=colors,
                     size=sizes,
-                    line=dict(width=2, color=self.colors.get("text", "#000000")),
-                    opacity=0.8,
+                    line=dict(width=2, color=self.colors.get('text', '#000000')),
+                    opacity=0.8
                 ),
-                hovertemplate="<b>%{text}</b><br>"
-                + "Return: %{y:.2f}%<br>"
-                + "Risk: %{x:.2f}%<br>"
-                + "Trades: %{customdata}<br>"
-                + "<extra></extra>",
+                hovertemplate='<b>%{text}</b><br>' +
+                            'Return: %{y:.2f}%<br>' +
+                            'Risk: %{x:.2f}%<br>' +
+                            'Trades: %{customdata}<br>' +
+                            '<extra></extra>'
             ),
-            row=row,
-            col=col,
+            row=row, col=col
         )
-
+        
         # Add quadrant lines
         if avg_returns and volatilities:
             avg_return = np.mean(avg_returns)
@@ -2092,112 +2005,106 @@ class ProfessionalVisualizer:
                 y=avg_return,
                 line_width=1,
                 line_dash="dash",
-                line_color=self.colors.get("neutral", "#888888"),
-                row=row,
-                col=col,
+                line_color=self.colors.get('neutral', '#888888'),
+                row=row, col=col
             )
             fig.add_vline(
                 x=avg_vol,
                 line_width=1,
                 line_dash="dash",
-                line_color=self.colors.get("neutral", "#888888"),
-                row=row,
-                col=col,
+                line_color=self.colors.get('neutral', '#888888'),
+                row=row, col=col
             )
-
+        
         # Update axis labels
         fig.update_xaxes(title_text="Volatility (%)", row=row, col=col)
         fig.update_yaxes(title_text="Average Return (%)", row=row, col=col)
-
+        
     def _calculate_sharpe_ratio(self):
         """Calculate Sharpe ratio with enhanced precision"""
-        sell_trades = [t for t in self.trading_system.trades if t["action"] == "SELL"]
+        sell_trades = [t for t in self.trading_system.trades if t['action'] == 'SELL']
         if not sell_trades:
             return 0
-
-        returns = [t.get("pnl_pct", 0) for t in sell_trades]
+            
+        returns = [t.get('pnl_pct', 0) for t in sell_trades]
         if len(returns) < 2:
             return 0
-
+            
         # Annualize the Sharpe ratio
         daily_returns = np.array(returns) / 100  # Convert to decimal
-        excess_returns = daily_returns - 0.02 / 252  # Assume 2% risk-free rate
-
+        excess_returns = daily_returns - 0.02/252  # Assume 2% risk-free rate
+        
         if np.std(excess_returns) == 0:
             return 0
-
+            
         return (np.mean(excess_returns) / np.std(excess_returns)) * np.sqrt(252)
-
+    
     def _calculate_max_drawdown(self):
         """Calculate maximum drawdown with enhanced precision"""
         if not self.trading_system.trades:
             return 0
-
+            
         current_balance = self.trading_system.trading_config.initial_balance
         peak_balance = current_balance
         max_drawdown = 0
-
+        
         for trade in self.trading_system.trades:
-            if trade["action"] == "BUY":
-                current_balance -= trade["cost"]
+            if trade['action'] == 'BUY':
+                current_balance -= trade['cost']
             else:
-                current_balance += trade["revenue"]
-
+                current_balance += trade['revenue']
+            
             if current_balance > peak_balance:
                 peak_balance = current_balance
-
+            
             drawdown = (peak_balance - current_balance) / peak_balance
             max_drawdown = max(max_drawdown, drawdown)
-
+        
         return max_drawdown * 100
-
+    
     def _calculate_win_rate(self):
         """Calculate win rate with enhanced precision"""
-        sell_trades = [t for t in self.trading_system.trades if t["action"] == "SELL"]
+        sell_trades = [t for t in self.trading_system.trades if t['action'] == 'SELL']
         if not sell_trades:
             return 0
-
-        winning_trades = [t for t in sell_trades if t.get("pnl", 0) > 0]
+            
+        winning_trades = [t for t in sell_trades if t.get('pnl', 0) > 0]
         return len(winning_trades) / len(sell_trades) * 100
-
+    
     def create_investor_report(self, save_path=None):
         """
         Create a comprehensive investor report with professional formatting
-
+        
         Generates a detailed markdown report suitable for institutional investors,
         complete with executive summary, risk analysis, and performance metrics.
         """
         print("\n📊 Generating Investor Report...")
         print("📋 Compiling performance metrics...")
-
+        
         portfolio = self.trading_system.get_portfolio_status()
         current_date = datetime.now().strftime("%B %d, %Y")
-
+        
         # Calculate additional metrics
         total_trades = len(self.trading_system.trades)
-        buy_trades = len(
-            [t for t in self.trading_system.trades if t["action"] == "BUY"]
-        )
-        sell_trades = len(
-            [t for t in self.trading_system.trades if t["action"] == "SELL"]
-        )
-
+        buy_trades = len([t for t in self.trading_system.trades if t['action'] == 'BUY'])
+        sell_trades = len([t for t in self.trading_system.trades if t['action'] == 'SELL'])
+        
         # Risk metrics
         sharpe_ratio = self._calculate_sharpe_ratio()
         max_drawdown = self._calculate_max_drawdown()
         win_rate = self._calculate_win_rate()
-
+        
         # Performance metrics
-        total_return = portfolio.get("total_return", 0)
-        total_realized = portfolio.get("total_realized_returns", 0)
-        current_value = portfolio.get("total_value", 0)
-
+        total_return = portfolio.get('total_return', 0)
+        total_realized = portfolio.get('total_realized_returns', 0)
+        current_value = portfolio.get('total_value', 0)
+        
         report = f"""
 # 🚀 XENIA V2 TRADING SYSTEM
 ## Institutional Investment Report
 
 **Report Date:** {current_date}  
-**Reporting Period:** {self.trading_system.trades[0]["date"] if self.trading_system.trades else "N/A"} - {self.trading_system.trades[-1]["date"] if self.trading_system.trades else "N/A"}  
+**Reporting Period:** {self.trading_system.trades[0]['date'] if self.trading_system.trades else 'N/A'} - {self.trading_system.trades[-1]['date'] if self.trading_system.trades else 'N/A'}  
 **Strategy:** XENIA V2 Algorithmic Trading System
 
 ---
@@ -2206,12 +2113,12 @@ class ProfessionalVisualizer:
 
 | Metric | Value | Status |
 |--------|-------|---------|
-| **Total Return** | {total_return:.2f}% | {"🟢 Positive" if total_return > 0 else "🔴 Negative"} |
-| **Realized Returns** | {total_realized:.2f}% | {"🟢 Positive" if total_realized > 0 else "🔴 Negative"} |
-| **Portfolio Value** | ${current_value:,.2f} | {"🟢 Above Initial" if current_value > self.trading_system.trading_config.initial_balance else "🔴 Below Initial"} |
-| **Sharpe Ratio** | {sharpe_ratio:.3f} | {"🟢 Excellent" if sharpe_ratio > 1.5 else "🟡 Good" if sharpe_ratio > 1 else "🔴 Poor"} |
-| **Maximum Drawdown** | {max_drawdown:.2f}% | {"🟢 Low Risk" if max_drawdown < 10 else "🟡 Moderate Risk" if max_drawdown < 20 else "🔴 High Risk"} |
-| **Win Rate** | {win_rate:.1f}% | {"🟢 Strong" if win_rate > 60 else "🟡 Moderate" if win_rate > 40 else "🔴 Weak"} |
+| **Total Return** | {total_return:.2f}% | {'🟢 Positive' if total_return > 0 else '🔴 Negative'} |
+| **Realized Returns** | {total_realized:.2f}% | {'🟢 Positive' if total_realized > 0 else '🔴 Negative'} |
+| **Portfolio Value** | ${current_value:,.2f} | {'🟢 Above Initial' if current_value > self.trading_system.trading_config.initial_balance else '🔴 Below Initial'} |
+| **Sharpe Ratio** | {sharpe_ratio:.3f} | {'🟢 Excellent' if sharpe_ratio > 1.5 else '🟡 Good' if sharpe_ratio > 1 else '🔴 Poor'} |
+| **Maximum Drawdown** | {max_drawdown:.2f}% | {'🟢 Low Risk' if max_drawdown < 10 else '🟡 Moderate Risk' if max_drawdown < 20 else '🔴 High Risk'} |
+| **Win Rate** | {win_rate:.1f}% | {'🟢 Strong' if win_rate > 60 else '🟡 Moderate' if win_rate > 40 else '🔴 Weak'} |
 
 ---
 
@@ -2235,59 +2142,53 @@ class ProfessionalVisualizer:
 
 ### Current Holdings
 """
-
-        if portfolio.get("positions"):
-            total_portfolio_value = portfolio["total_value"]
-
+        
+        if portfolio.get('positions'):
+            total_portfolio_value = portfolio['total_value']
+            
             report += "\n| Symbol | Position Value | Allocation | P&L | Status |\n"
             report += "|--------|---------------|------------|-----|--------|\n"
-
-            for symbol, position in portfolio["positions"].items():
-                allocation = (position["value"] / total_portfolio_value) * 100
-                pnl = position.get("unrealized_pnl", 0)
-                status = (
-                    "🟢 Profitable"
-                    if pnl > 0
-                    else "🔴 Loss"
-                    if pnl < 0
-                    else "🟡 Neutral"
-                )
-
+            
+            for symbol, position in portfolio['positions'].items():
+                allocation = (position['value'] / total_portfolio_value) * 100
+                pnl = position.get('unrealized_pnl', 0)
+                status = '🟢 Profitable' if pnl > 0 else '🔴 Loss' if pnl < 0 else '🟡 Neutral'
+                
                 report += f"| **{symbol}** | ${position['value']:,.2f} | {allocation:.1f}% | ${pnl:,.2f} | {status} |\n"
-
-        cash_allocation = (portfolio["cash"] / portfolio["total_value"]) * 100
+        
+        cash_allocation = (portfolio['cash'] / portfolio['total_value']) * 100
         report += f"| **Cash** | ${portfolio['cash']:,.2f} | {cash_allocation:.1f}% | - | 🟢 Liquid |\n"
-
+        
         report += f"""
 
 ---
 
 ## 📊 Risk Analysis
 """
-
+        
         if self.monte_carlo and self.monte_carlo.simulations:
             stats = self.monte_carlo.get_statistics()
             report += f"""
 ### Monte Carlo Simulation Results
-*Based on {stats["simulation_count"]:,} simulations*
+*Based on {stats['simulation_count']:,} simulations*
 
 | Metric | Value | Interpretation |
 |--------|-------|----------------|
-| **Expected Return** | {stats["returns"]["mean"]:.2f}% | {"🟢 Positive outlook" if stats["returns"]["mean"] > 0 else "🔴 Negative outlook"} |
-| **Return Volatility** | {stats["returns"]["std"]:.2f}% | {"🟢 Low volatility" if stats["returns"]["std"] < 15 else "🟡 Moderate volatility" if stats["returns"]["std"] < 25 else "🔴 High volatility"} |
-| **5th Percentile** | {stats["returns"]["percentile_5"]:.2f}% | Worst-case scenario |
-| **95th Percentile** | {stats["returns"]["percentile_95"]:.2f}% | Best-case scenario |
-| **Probability of Profit** | {stats["probability_positive"]:.1f}% | {"🟢 High confidence" if stats["probability_positive"] > 60 else "🟡 Moderate confidence" if stats["probability_positive"] > 40 else "🔴 Low confidence"} |
-| **Value at Risk (95%)** | {stats["risk_metrics"]["var_95"]["mean"]:.2f}% | Maximum expected daily loss |
-| **Expected Shortfall** | {stats["risk_metrics"]["cvar_95"]["mean"]:.2f}% | Average loss beyond VaR |
+| **Expected Return** | {stats['returns']['mean']:.2f}% | {'🟢 Positive outlook' if stats['returns']['mean'] > 0 else '🔴 Negative outlook'} |
+| **Return Volatility** | {stats['returns']['std']:.2f}% | {'🟢 Low volatility' if stats['returns']['std'] < 15 else '🟡 Moderate volatility' if stats['returns']['std'] < 25 else '🔴 High volatility'} |
+| **5th Percentile** | {stats['returns']['percentile_5']:.2f}% | Worst-case scenario |
+| **95th Percentile** | {stats['returns']['percentile_95']:.2f}% | Best-case scenario |
+| **Probability of Profit** | {stats['probability_positive']:.1f}% | {'🟢 High confidence' if stats['probability_positive'] > 60 else '🟡 Moderate confidence' if stats['probability_positive'] > 40 else '🔴 Low confidence'} |
+| **Value at Risk (95%)** | {stats['risk_metrics']['var_95']['mean']:.2f}% | Maximum expected daily loss |
+| **Expected Shortfall** | {stats['risk_metrics']['cvar_95']['mean']:.2f}% | Average loss beyond VaR |
 
 ### Risk Metrics Summary
-- **Sortino Ratio:** {stats["sortino_ratio"]:.3f}
-- **Maximum Simulated Drawdown:** {stats["risk_metrics"]["max_drawdown"]["percentile_95"]:.2f}%
-- **Probability of >10% Loss:** {stats["probability_loss_10"]:.1f}%
-- **Probability of >20% Gain:** {stats["probability_gain_20"]:.1f}%
+- **Sortino Ratio:** {stats['sortino_ratio']:.3f}
+- **Maximum Simulated Drawdown:** {stats['risk_metrics']['max_drawdown']['percentile_95']:.2f}%
+- **Probability of >10% Loss:** {stats['probability_loss_10']:.1f}%
+- **Probability of >20% Gain:** {stats['probability_gain_20']:.1f}%
 """
-
+        
         report += f"""
 
 ---
@@ -2297,50 +2198,44 @@ class ProfessionalVisualizer:
 | Symbol | Trades | Total P&L | Avg P&L | Win Rate | Best Trade | Worst Trade |
 |--------|---------|-----------|---------|----------|------------|-------------|
 """
-
+        
         symbol_performance = {}
         symbol_trades = {}
         symbol_wins = {}
         symbol_best = {}
         symbol_worst = {}
-
+        
         for trade in self.trading_system.trades:
-            if trade["action"] == "SELL":
-                symbol = trade["symbol"]
-                pnl = trade.get("pnl", 0)
-
+            if trade['action'] == 'SELL':
+                symbol = trade['symbol']
+                pnl = trade.get('pnl', 0)
+                
                 if symbol not in symbol_performance:
                     symbol_performance[symbol] = 0
                     symbol_trades[symbol] = 0
                     symbol_wins[symbol] = 0
-                    symbol_best[symbol] = float("-inf")
-                    symbol_worst[symbol] = float("inf")
-
+                    symbol_best[symbol] = float('-inf')
+                    symbol_worst[symbol] = float('inf')
+                
                 symbol_performance[symbol] += pnl
                 symbol_trades[symbol] += 1
-
+                
                 if pnl > 0:
                     symbol_wins[symbol] += 1
-
+                
                 symbol_best[symbol] = max(symbol_best[symbol], pnl)
                 symbol_worst[symbol] = min(symbol_worst[symbol], pnl)
-
+        
         for symbol in symbol_performance:
             trades_count = symbol_trades[symbol]
             total_pnl = symbol_performance[symbol]
             avg_pnl = total_pnl / trades_count if trades_count > 0 else 0
-            win_rate_symbol = (
-                (symbol_wins[symbol] / trades_count * 100) if trades_count > 0 else 0
-            )
-            best_trade = (
-                symbol_best[symbol] if symbol_best[symbol] != float("-inf") else 0
-            )
-            worst_trade = (
-                symbol_worst[symbol] if symbol_worst[symbol] != float("inf") else 0
-            )
-
+            win_rate_symbol = (symbol_wins[symbol] / trades_count * 100) if trades_count > 0 else 0
+            best_trade = symbol_best[symbol] if symbol_best[symbol] != float('-inf') else 0
+            worst_trade = symbol_worst[symbol] if symbol_worst[symbol] != float('inf') else 0
+            
             report += f"| **{symbol}** | {trades_count} | ${total_pnl:.2f} | ${avg_pnl:.2f} | {win_rate_symbol:.1f}% | ${best_trade:.2f} | ${worst_trade:.2f} |\n"
-
+        
         report += f"""
 
 ---
@@ -2349,7 +2244,7 @@ class ProfessionalVisualizer:
 
 ### Immediate Actions
 """
-
+        
         # Generate recommendations based on performance
         if total_return > 10:
             report += "- ✅ **Continue Current Strategy**: Portfolio is performing well above market average\n"
@@ -2357,25 +2252,25 @@ class ProfessionalVisualizer:
             report += "- 🟡 **Monitor Performance**: Positive returns but room for improvement\n"
         else:
             report += "- ⚠️ **Review Strategy**: Portfolio underperforming, consider adjustments\n"
-
+        
         if max_drawdown > 20:
             report += "- 🔴 **Risk Management**: High drawdown detected, implement stricter stop-losses\n"
         elif max_drawdown > 10:
             report += "- 🟡 **Risk Monitoring**: Moderate drawdown, maintain current risk controls\n"
         else:
             report += "- ✅ **Risk Control**: Excellent drawdown management\n"
-
+        
         if win_rate < 40:
             report += "- 📊 **Strategy Refinement**: Low win rate suggests need for signal optimization\n"
         elif win_rate > 60:
             report += "- ✅ **Signal Quality**: High win rate indicates strong predictive signals\n"
-
+        
         report += f"""
 
 ### Risk Management
-- **Position Sizing**: Current allocation appears {"well-diversified" if len(portfolio.get("positions", {})) > 3 else "concentrated"}
-- **Cash Management**: {cash_allocation:.1f}% cash position provides {"adequate" if cash_allocation > 10 else "limited"} liquidity
-- **Rebalancing**: {"Recommended" if max([pos["value"] for pos in portfolio.get("positions", {}).values()] + [0]) / portfolio["total_value"] > 0.3 else "Not needed"} based on current allocations
+- **Position Sizing**: Current allocation appears {'well-diversified' if len(portfolio.get('positions', {})) > 3 else 'concentrated'}
+- **Cash Management**: {cash_allocation:.1f}% cash position provides {'adequate' if cash_allocation > 10 else 'limited'} liquidity
+- **Rebalancing**: {'Recommended' if max([pos['value'] for pos in portfolio.get('positions', {}).values()] + [0]) / portfolio['total_value'] > 0.3 else 'Not needed'} based on current allocations
 
 ---
 
@@ -2395,51 +2290,49 @@ For questions regarding this report or the trading system:
 
 **Risk Disclaimer:** Trading involves substantial risk of loss and is not suitable for all investors. The value of investments may go down as well as up. Please consider your risk tolerance and investment objectives before trading.
 """
-
+        
         if save_path:
-            with open(save_path, "w", encoding="utf-8") as f:
+            with open(save_path, 'w', encoding='utf-8') as f:
                 f.write(report)
             print(f"✅ Investor report saved to: {save_path}")
-
+        
         print("📊 Report generation complete!")
         return report
-
+    
     def _calculate_portfolio_volatility(self):
         """Calculate annualized portfolio volatility"""
         if not self.trading_system.trades:
             return 0
-
-        sell_trades = [t for t in self.trading_system.trades if t["action"] == "SELL"]
+            
+        sell_trades = [t for t in self.trading_system.trades if t['action'] == 'SELL']
         if len(sell_trades) < 2:
             return 0
-
-        returns = [t.get("pnl_pct", 0) for t in sell_trades]
+            
+        returns = [t.get('pnl_pct', 0) for t in sell_trades]
         daily_vol = np.std(returns)
-
+        
         # Annualize assuming 252 trading days
         return daily_vol * np.sqrt(252)
-
+    
     def _calculate_portfolio_beta(self):
         """Calculate portfolio beta (simplified)"""
         # This is a simplified beta calculation
         # In practice, you'd need market data for proper beta calculation
         return 1.0  # Placeholder
-
+    
     def _calculate_portfolio_alpha(self):
         """Calculate portfolio alpha"""
         # Simplified alpha calculation
-        portfolio_return = self.trading_system.get_portfolio_status().get(
-            "total_return", 0
-        )
+        portfolio_return = self.trading_system.get_portfolio_status().get('total_return', 0)
         benchmark_return = 8.0  # Assuming 8% market return
-
+        
         return portfolio_return - benchmark_return
-
+    
     def _calculate_information_ratio(self):
         """Calculate information ratio"""
         alpha = self._calculate_portfolio_alpha()
         tracking_error = self._calculate_portfolio_volatility()
-
+        
         return alpha / tracking_error if tracking_error > 0 else 0
 
 
@@ -2675,43 +2568,23 @@ class XeniaV2Modular:
 
         except Exception as e:
             print(f"Error executing trade for {symbol}: {e}")
-
-    import time
-
-    async def run_backtest(self):
-        """Run backtest on all available data"""
+        
+    async def run_backtest(self, start_date=None, end_date=None):
+        """
+        Run backtest on all available data or within specified date range
+        
+        Args:
+            start_date (str or datetime, optional): Start date for backtest (e.g., '2023-01-01')
+            end_date (str or datetime, optional): End date for backtest (e.g., '2023-12-31')
+        """
         print("\033[96m" + "▓" * 80 + "\033[0m")
         print("\033[96m▓\033[0m" + " " * 78 + "\033[96m▓\033[0m")
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m    ██╗  ██╗███████╗███╗   ██╗██╗ █████╗     ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m    ╚██╗██╔╝██╔════╝████╗  ██║██║██╔══██╗    ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m     ╚███╔╝ █████╗  ██╔██╗ ██║██║███████║    ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m     ██╔██╗ ██╔══╝  ██║╚██╗██║██║██╔══██║    ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m    ██╔╝ ██╗███████╗██║ ╚████║██║██║  ██║    ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
-        print(
-            "\033[96m▓\033[0m"
-            + "\033[92m    ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝    ◢◤◢◤◢◤    \033[0m"
-            + "\033[96m▓\033[0m"
-        )
+        print("\033[96m▓\033[0m" + "\033[92m    ██╗  ██╗███████╗███╗   ██╗██╗ █████╗     ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
+        print("\033[96m▓\033[0m" + "\033[92m    ╚██╗██╔╝██╔════╝████╗  ██║██║██╔══██╗    ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
+        print("\033[96m▓\033[0m" + "\033[92m     ╚███╔╝ █████╗  ██╔██╗ ██║██║███████║    ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
+        print("\033[96m▓\033[0m" + "\033[92m     ██╔██╗ ██╔══╝  ██║╚██╗██║██║██╔══██║    ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
+        print("\033[96m▓\033[0m" + "\033[92m    ██╔╝ ██╗███████╗██║ ╚████║██║██║  ██║    ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
+        print("\033[96m▓\033[0m" + "\033[92m    ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═╝    ◢◤◢◤◢◤    \033[0m" + "\033[96m▓\033[0m")
         print("\033[96m▓\033[0m" + " " * 78 + "\033[96m▓\033[0m")
         print("\033[96m" + "▓" * 80 + "\033[0m")
 
@@ -2732,10 +2605,79 @@ class XeniaV2Modular:
         max_symbol = max(self.data.keys(), key=lambda x: len(self.data[x]))
         reference_data = self.data[max_symbol]
 
+        # Filter data by date range if specified
+        if start_date is not None or end_date is not None:
+            import pandas as pd
+            
+            # Convert string dates to datetime if needed
+            if start_date is not None:
+                if isinstance(start_date, str):
+                    start_date = pd.to_datetime(start_date)
+            if end_date is not None:
+                if isinstance(end_date, str):
+                    end_date = pd.to_datetime(end_date)
+            
+            # Get timezone info from the data index
+            data_tz = None
+            if hasattr(reference_data.index, 'tz') and reference_data.index.tz is not None:
+                data_tz = reference_data.index.tz
+            
+            # Localize dates to match data timezone
+            if data_tz is not None:
+                if start_date is not None:
+                    if hasattr(start_date, 'tz') and start_date.tz is None:
+                        # pandas Timestamp with no timezone
+                        start_date = start_date.tz_localize(data_tz)
+                    elif hasattr(start_date, 'tz') and start_date.tz != data_tz:
+                        # pandas Timestamp with different timezone
+                        start_date = start_date.tz_convert(data_tz)
+                    elif hasattr(start_date, 'tzinfo') and start_date.tzinfo is None:
+                        # datetime.datetime with no timezone
+                        start_date = pd.Timestamp(start_date).tz_localize(data_tz)
+                    elif hasattr(start_date, 'tzinfo') and start_date.tzinfo != data_tz:
+                        # datetime.datetime with different timezone
+                        start_date = pd.Timestamp(start_date).tz_convert(data_tz)
+                    
+                if end_date is not None:
+                    if hasattr(end_date, 'tz') and end_date.tz is None:
+                        # pandas Timestamp with no timezone
+                        end_date = end_date.tz_localize(data_tz)
+                    elif hasattr(end_date, 'tz') and end_date.tz != data_tz:
+                        # pandas Timestamp with different timezone
+                        end_date = end_date.tz_convert(data_tz)
+                    elif hasattr(end_date, 'tzinfo') and end_date.tzinfo is None:
+                        # datetime.datetime with no timezone
+                        end_date = pd.Timestamp(end_date).tz_localize(data_tz)
+                    elif hasattr(end_date, 'tzinfo') and end_date.tzinfo != data_tz:
+                        # datetime.datetime with different timezone
+                        end_date = pd.Timestamp(end_date).tz_convert(data_tz)
+            
+            # Filter reference data
+            if start_date is not None and end_date is not None:
+                reference_data = reference_data[(reference_data.index >= start_date) & (reference_data.index <= end_date)]
+                date_range_msg = f"FROM {start_date.strftime('%Y-%m-%d')} TO {end_date.strftime('%Y-%m-%d')}"
+            elif start_date is not None:
+                reference_data = reference_data[reference_data.index >= start_date]
+                date_range_msg = f"FROM {start_date.strftime('%Y-%m-%d')} ONWARDS"
+            elif end_date is not None:
+                reference_data = reference_data[reference_data.index <= end_date]
+                date_range_msg = f"UP TO {end_date.strftime('%Y-%m-%d')}"
+            
+            print(f"\033[95m📅 DATE RANGE FILTER APPLIED: {date_range_msg}\033[0m")
+            
+            # Also filter all symbol data to match the date range
+            for symbol in self.data:
+                if start_date is not None and end_date is not None:
+                    self.data[symbol] = self.data[symbol][(self.data[symbol].index >= start_date) & (self.data[symbol].index <= end_date)]
+                elif start_date is not None:
+                    self.data[symbol] = self.data[symbol][self.data[symbol].index >= start_date]
+                elif end_date is not None:
+                    self.data[symbol] = self.data[symbol][self.data[symbol].index <= end_date]
+
         print(f"\033[94m🔍 SCANNING {len(reference_data)} TEMPORAL NODES\033[0m")
 
         if len(reference_data) == 0:
-            print("\033[91m❌ TEMPORAL MATRIX CORRUPTED\033[0m")
+            print("\033[91m❌ TEMPORAL MATRIX CORRUPTED - NO DATA IN SPECIFIED RANGE\033[0m")
             return
 
         total_days = len(reference_data)
@@ -2767,26 +2709,26 @@ class XeniaV2Modular:
                 relative_pos = j / bar_width
                 if j < filled_width:
                     if relative_pos < 0.15:
-                        bar_parts.append("\033[38;5;196m█\033[0m")  # Bright Red
+                        bar_parts.append('\033[38;5;196m█\033[0m')  # Bright Red
                     elif relative_pos < 0.30:
-                        bar_parts.append("\033[38;5;202m█\033[0m")  # Orange
+                        bar_parts.append('\033[38;5;202m█\033[0m')  # Orange
                     elif relative_pos < 0.45:
-                        bar_parts.append("\033[38;5;220m█\033[0m")  # Yellow
+                        bar_parts.append('\033[38;5;220m█\033[0m')  # Yellow
                     elif relative_pos < 0.60:
-                        bar_parts.append("\033[38;5;45m█\033[0m")  # Cyan
+                        bar_parts.append('\033[38;5;45m█\033[0m')   # Cyan
                     elif relative_pos < 0.75:
-                        bar_parts.append("\033[38;5;51m█\033[0m")  # Blue-Cyan
+                        bar_parts.append('\033[38;5;51m█\033[0m')   # Blue-Cyan
                     else:
-                        bar_parts.append("\033[38;5;82m█\033[0m")  # Bright Green
+                        bar_parts.append('\033[38;5;82m█\033[0m')   # Bright Green
                 else:
                     if j % 7 == 0:
-                        bar_parts.append("\033[90m┊\033[0m")
+                        bar_parts.append('\033[90m┊\033[0m')
                     elif j % 3 == 0:
-                        bar_parts.append("\033[90m▒\033[0m")
+                        bar_parts.append('\033[90m▒\033[0m')
                     else:
-                        bar_parts.append("\033[90m░\033[0m")
+                        bar_parts.append('\033[90m░\033[0m')
 
-            bar = "".join(bar_parts)
+            bar = ''.join(bar_parts)
 
             elapsed_time = time.time() - start_time
             time_samples.append(time.time() - loop_start)
@@ -2811,22 +2753,16 @@ class XeniaV2Modular:
             elapsed_display = format_time(elapsed_time)
 
             percent = progress * 100
-            pulse = "◉" if i % 2 == 0 else "◎"
+            pulse = '◉' if i % 2 == 0 else '◎'
             status = "ANALYZING" if percent < 100 else "COMPLETE"
-            scan_indicator = "►" if (i % 40) < 20 else "◄"
+            scan_indicator = '►' if (i % 40) < 20 else '◄'
 
-            print(
-                f"\033[2K\r\033[96m⟦\033[0m{bar}\033[96m⟧\033[0m \033[93m{percent:.1f}%\033[0m \033[94m[{i + 1:04d}/{total_days:04d}]\033[0m \033[95m{pulse}{status}{pulse}\033[0m \033[97m{scan_indicator}\033[0m \033[90m|\033[0m \033[97mETA: {eta_display}\033[0m \033[90m|\033[0m \033[97mElapsed: {elapsed_display}\033[0m",
-                end="",
-                flush=True,
-            )
+            print(f'\033[2K\r\033[96m⟦\033[0m{bar}\033[96m⟧\033[0m \033[93m{percent:.1f}%\033[0m \033[94m[{i+1:04d}/{total_days:04d}]\033[0m \033[95m{pulse}{status}{pulse}\033[0m \033[97m{scan_indicator}\033[0m \033[90m|\033[0m \033[97mETA: {eta_display}\033[0m \033[90m|\033[0m \033[97mElapsed: {elapsed_display}\033[0m', end='', flush=True)
 
         total_time = time.time() - start_time
         final_display = format_time(total_time)
 
-        print(
-            f"\n\033[92m✓ QUANTUM ANALYSIS COMPLETE - TOTAL TIME: {final_display}\033[0m"
-        )
+        print(f"\n\033[92m✓ QUANTUM ANALYSIS COMPLETE - TOTAL TIME: {final_display}\033[0m")
         print("\033[92m✓ GENERATING NEURAL INSIGHTS\033[0m")
 
         self.generate_results()
@@ -2834,45 +2770,39 @@ class XeniaV2Modular:
     def run_professional_analysis(self, num_monte_carlo=10000, forecast_days=252):
         """Run comprehensive professional analysis"""
         print("\n🔬 Running Professional Analysis...")
-
+        
         # Initialize Monte Carlo simulator
         monte_carlo = MonteCarloSimulator(self)
-
+        
         # Run Monte Carlo simulations
         monte_carlo.run_monte_carlo(num_monte_carlo, forecast_days)
-
+        
         # Get statistics
         mc_stats = monte_carlo.get_statistics()
         import sys
-
         if mc_stats:
             print(f"\n📊 Monte Carlo Results ({num_monte_carlo} simulations):")
-            print(
-                f"Expected Return: {mc_stats['returns']['mean']:.2f}% ± {mc_stats['returns']['std']:.2f}%"
-            )
+            print(f"Expected Return: {mc_stats['returns']['mean']:.2f}% ± {mc_stats['returns']['std']:.2f}%")
             print(f"5th Percentile: {mc_stats['returns']['percentile_5']:.2f}%")
             print(f"95th Percentile: {mc_stats['returns']['percentile_95']:.2f}%")
-            print(
-                f"Probability of Positive Return: {mc_stats['probability_positive']:.1f}%"
-            )
-            print(
-                f"Expected Max Drawdown: {mc_stats['risk_metrics']['max_drawdown']['mean']:.2f}%"
-            )
-
+            print(f"Probability of Positive Return: {mc_stats['probability_positive']:.1f}%")
+            print(f"Expected Max Drawdown: {mc_stats['risk_metrics']['max_drawdown']['mean']:.2f}%")
+        
         # Create professional visualizations
         visualizer = ProfessionalVisualizer(self, monte_carlo)
-
+        
         # Generate executive dashboard
-        visualizer.create_executive_dashboard("executive_dashboard.html")
-
+        visualizer.create_executive_dashboard('executive_dashboard.html')
+        
         # Generate investor report
-        visualizer.create_investor_report("investor_report.md")
-
+        visualizer.create_investor_report('investor_report.md')
+        
         print("\n✅ Professional analysis complete!")
         print("📊 Executive dashboard saved as 'executive_dashboard.html'")
         print("📋 Investor report saved as 'investor_report.md'")
-
+        
         return monte_carlo
+
 
     def generate_results(self):
         """Generate comprehensive results"""
@@ -3131,15 +3061,16 @@ def create_custom_system(
     )
 
 
-def create_default_trader(
-    api_key: Optional[str] = None, secret_key: Optional[str] = None
-):
+def create_default_trader(api_key: Optional[str] = None, secret_key: Optional[str] = None):
+
     if not api_key and secret_key:
-        api_key = "PKB6827AE6J1CM0IKLEJ"
-        secret_key = "bRQuhjlrbz7uVqX3SeBfJ2KaRWsOcAYLXv5rbgZV"
+        api_key='PKB6827AE6J1CM0IKLEJ'
+        secret_key='bRQuhjlrbz7uVqX3SeBfJ2KaRWsOcAYLXv5rbgZV'
 
-    return AlpacaTrader(api_key=api_key, secret_key=secret_key)
-
+    return AlpacaTrader(
+        api_key=api_key,
+        secret_key=secret_key
+    )
 
 import asyncio
 import argparse
@@ -3162,99 +3093,81 @@ import os
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("xenia_trading.log"), logging.StreamHandler()],
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('xenia_trading.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class EmailConfig:
-    """Configuration for email notifications"""
-
-    enabled: bool = True
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    sender_email: str = ""
-    sender_password: str = ""
-    recipient_email: str = "void.ynd@gmail.com"
-    send_on_signals: bool = True
-    send_on_trades: bool = True
-    send_on_errors: bool = True
-    send_daily_summary: bool = True
-
 
 class EmailNotificationService:
     """Email notification service for trading system"""
-
+    
     def __init__(self, config: EmailConfig):
         self.config = config
         self.daily_events = []
         self.last_summary_date = None
-
+        
     def add_event(self, event_type: str, message: str, data: Dict = None):
         """Add an event to the daily summary"""
         event = {
-            "timestamp": datetime.now().isoformat(),
-            "type": event_type,
-            "message": message,
-            "data": data or {},
+            'timestamp': datetime.now().isoformat(),
+            'type': event_type,
+            'message': message,
+            'data': data or {}
         }
         self.daily_events.append(event)
-
+        
     def send_email(self, subject: str, body: str, html_body: str = None) -> bool:
         """Send email notification"""
-        if (
-            not self.config.enabled
-            or not self.config.sender_email
-            or not self.config.sender_password
-        ):
+        if not self.config.enabled or not self.config.sender_email or not self.config.sender_password:
             logger.warning("Email notifications not properly configured")
             return False
-
+            
         try:
-            msg = MIMEMultipart("alternative")
-            msg["From"] = self.config.sender_email
-            msg["To"] = self.config.recipient_email
-            msg["Subject"] = f"[XENIA TRADING] {subject}"
-
+            msg = MIMEMultipart('alternative')
+            msg['From'] = self.config.sender_email
+            msg['To'] = self.config.recipient_email
+            msg['Subject'] = f"[XENIA TRADING] {subject}"
+            
             # Add text version
-            text_part = MIMEText(body, "plain")
+            text_part = MIMEText(body, 'plain')
             msg.attach(text_part)
-
+            
             # Add HTML version if provided
             if html_body:
-                html_part = MIMEText(html_body, "html")
+                html_part = MIMEText(html_body, 'html')
                 msg.attach(html_part)
-
+            
             # Connect and send email
             server = smtplib.SMTP(self.config.smtp_server, self.config.smtp_port)
             server.starttls()
             server.login(self.config.sender_email, self.config.sender_password)
             server.send_message(msg)
             server.quit()
-
+            
             logger.info(f"Email sent successfully: {subject}")
             return True
-
+            
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
-
+    
     def send_signal_notification(self, signals: Dict[str, Dict]):
         """Send notification for new trading signals"""
         if not self.config.send_on_signals:
             return
-
-        active_signals = {
-            k: v for k, v in signals.items() if v["recommendation"] != "HOLD"
-        }
-
+            
+        active_signals = {k: v for k, v in signals.items() if v['recommendation'] != 'HOLD'}
+        
         if not active_signals:
             return
-
+            
         subject = f"New Trading Signals - {len(active_signals)} Active"
-
+        
         # Text version
         body = f"New trading signals detected at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n"
         for symbol, signal_data in active_signals.items():
@@ -3262,13 +3175,13 @@ class EmailNotificationService:
             body += f"Signal: {signal_data['combined_signal']:.3f} | "
             body += f"Confidence: {signal_data['confidence']:.3f} | "
             body += f"Price: ${signal_data['price']:.2f}\n"
-
+        
         # HTML version
         html_body = f"""
         <html>
         <body>
         <h2>🚀 New Trading Signals</h2>
-        <p><strong>Timestamp:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <p><strong>Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p><strong>Active Signals:</strong> {len(active_signals)}</p>
         
         <table border="1" style="border-collapse: collapse; width: 100%;">
@@ -3280,50 +3193,46 @@ class EmailNotificationService:
             <th>Price</th>
         </tr>
         """
-
+        
         for symbol, signal_data in active_signals.items():
-            color = "#28a745" if signal_data["recommendation"] == "BUY" else "#dc3545"
+            color = "#28a745" if signal_data['recommendation'] == 'BUY' else "#dc3545"
             html_body += f"""
             <tr>
                 <td><strong>{symbol}</strong></td>
-                <td style="color: {color}; font-weight: bold;">{signal_data["recommendation"]}</td>
-                <td>{signal_data["combined_signal"]:.3f}</td>
-                <td>{signal_data["confidence"]:.3f}</td>
-                <td>${signal_data["price"]:.2f}</td>
+                <td style="color: {color}; font-weight: bold;">{signal_data['recommendation']}</td>
+                <td>{signal_data['combined_signal']:.3f}</td>
+                <td>{signal_data['confidence']:.3f}</td>
+                <td>${signal_data['price']:.2f}</td>
             </tr>
             """
-
+        
         html_body += """
         </table>
         </body>
         </html>
         """
-
+        
         self.send_email(subject, body, html_body)
-        self.add_event(
-            "SIGNALS",
-            f"Sent signal notification for {len(active_signals)} symbols",
-            active_signals,
-        )
-
+        self.add_event("SIGNALS", f"Sent signal notification for {len(active_signals)} symbols", active_signals)
+    
     def send_trade_notification(self, trades: Dict[str, tuple]):
         """Send notification for executed trades"""
         if not self.config.send_on_trades or not trades:
             return
-
+            
         subject = f"Trades Executed - {len(trades)} Positions"
-
+        
         # Text version
         body = f"Trades executed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n"
         for symbol, (signal, price) in trades.items():
             body += f"{symbol}: {signal} at ${price:.2f}\n"
-
+        
         # HTML version
         html_body = f"""
         <html>
         <body>
         <h2>💼 Trades Executed</h2>
-        <p><strong>Timestamp:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <p><strong>Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p><strong>Trades:</strong> {len(trades)}</p>
         
         <table border="1" style="border-collapse: collapse; width: 100%;">
@@ -3333,9 +3242,9 @@ class EmailNotificationService:
             <th>Price</th>
         </tr>
         """
-
+        
         for symbol, (signal, price) in trades.items():
-            color = "#28a745" if signal == "BUY" else "#dc3545"
+            color = "#28a745" if signal == 'BUY' else "#dc3545"
             html_body += f"""
             <tr>
                 <td><strong>{symbol}</strong></td>
@@ -3343,85 +3252,85 @@ class EmailNotificationService:
                 <td>${price:.2f}</td>
             </tr>
             """
-
+        
         html_body += """
         </table>
         </body>
         </html>
         """
-
+        
         self.send_email(subject, body, html_body)
         self.add_event("TRADES", f"Executed {len(trades)} trades", trades)
-
+    
     def send_error_notification(self, error_message: str, context: str = ""):
         """Send notification for errors"""
         if not self.config.send_on_errors:
             return
-
+            
         subject = "❌ Trading System Error"
-
+        
         body = f"Error occurred in Xenia Trading System:\n\n"
         body += f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         body += f"Context: {context}\n"
         body += f"Error: {error_message}\n"
-
+        
         html_body = f"""
         <html>
         <body>
         <h2 style="color: #dc3545;">❌ Trading System Error</h2>
-        <p><strong>Time:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p><strong>Context:</strong> {context}</p>
         <p><strong>Error:</strong></p>
         <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 5px;">{error_message}</pre>
         </body>
         </html>
         """
-
+        
         self.send_email(subject, body, html_body)
         self.add_event("ERROR", f"Error in {context}: {error_message}")
-
+    
     def send_daily_summary(self, portfolio_status: Dict = None):
         """Send daily summary of trading activities"""
         if not self.config.send_daily_summary:
             return
-
+            
         today = datetime.now().date()
         if self.last_summary_date == today:
             return
-
+            
         self.last_summary_date = today
-
+        
         subject = f"Daily Trading Summary - {today.strftime('%Y-%m-%d')}"
-
+        
         # Count events by type
         event_counts = {}
         for event in self.daily_events:
-            event_type = event["type"]
+            event_type = event['type']
             event_counts[event_type] = event_counts.get(event_type, 0) + 1
-
+        
         # Text version
         body = f"Daily Trading Summary for {today.strftime('%Y-%m-%d')}:\n\n"
         body += f"Total Events: {len(self.daily_events)}\n"
-
+        
         for event_type, count in event_counts.items():
             body += f"{event_type}: {count}\n"
-
+        
         if portfolio_status:
             body += f"\nPortfolio Status:\n"
             body += f"Cash: ${portfolio_status.get('cash', 0):.2f}\n"
             body += f"Total Value: ${portfolio_status.get('total_value', 0):.2f}\n"
             body += f"Total Return: {portfolio_status.get('total_return', 0):.2f}%\n"
-
+        
         body += "\nRecent Events:\n"
         for event in self.daily_events[-5:]:  # Show last 5 events
             body += f"{event['timestamp']}: {event['type']} - {event['message']}\n"
-
+        
         # HTML version
         html_body = f"""
         <html>
         <body>
         <h2>📊 Daily Trading Summary</h2>
-        <p><strong>Date:</strong> {today.strftime("%Y-%m-%d")}</p>
+        <p><strong>Date:</strong> {today.strftime('%Y-%m-%d')}</p>
         <p><strong>Total Events:</strong> {len(self.daily_events)}</p>
         
         <h3>Event Summary</h3>
@@ -3431,7 +3340,7 @@ class EmailNotificationService:
             <th>Count</th>
         </tr>
         """
-
+        
         for event_type, count in event_counts.items():
             html_body += f"""
             <tr>
@@ -3439,80 +3348,37 @@ class EmailNotificationService:
                 <td>{count}</td>
             </tr>
             """
-
+        
         html_body += "</table>"
-
+        
         if portfolio_status:
             html_body += f"""
             <h3>Portfolio Status</h3>
             <table border="1" style="border-collapse: collapse; width: 100%;">
-            <tr><td><strong>Cash</strong></td><td>${portfolio_status.get("cash", 0):.2f}</td></tr>
-            <tr><td><strong>Total Value</strong></td><td>${portfolio_status.get("total_value", 0):.2f}</td></tr>
-            <tr><td><strong>Total Return</strong></td><td>{portfolio_status.get("total_return", 0):.2f}%</td></tr>
+            <tr><td><strong>Cash</strong></td><td>${portfolio_status.get('cash', 0):.2f}</td></tr>
+            <tr><td><strong>Total Value</strong></td><td>${portfolio_status.get('total_value', 0):.2f}</td></tr>
+            <tr><td><strong>Total Return</strong></td><td>{portfolio_status.get('total_return', 0):.2f}%</td></tr>
             </table>
             """
-
+        
         html_body += """
         </body>
         </html>
         """
-
+        
         self.send_email(subject, body, html_body)
-
+        
         # Clear daily events after sending summary
         self.daily_events = []
 
 
-@dataclass
-class TradingConfig:
-    """Configuration for the trading system"""
-
-    # Trading parameters
-    live_trading: bool = False
-    enable_monte_carlo: bool = False
-    monte_carlo_simulations: int = 10000
-    forecast_days: int = 252
-
-    # Timing parameters
-    run_interval_hours: int = 24
-    market_timezone: str = "US/Eastern"  # NYSE/NASDAQ timezone
-    local_timezone: str = "Africa/Kampala"  # Uganda timezone
-
-    # Portfolio parameters
-    initial_balance: float = 1000.0
-    risk_per_trade: float = 0.01  # 1% of buying power per trade
-
-    # API credentials (to be loaded from environment or config)
-    api_key: str = ""
-    api_secret: str = ""
-
-    # Trading symbols
-    symbols: list = None
-
-    # Email configuration
-    email_config: EmailConfig = None
-
-    def __post_init__(self):
-        if self.symbols is None:
-            self.symbols = [
-                "AAPL",  # AI investments + positioning in "Magnificent Seven"
-                "MSFT",  # Cloud/AI infrastructure benefit
-                "NVDA",  # Upgraded targets; Blackwell chips; continued AI tailwinds
-                "AMZN",  # Heavy cloud spending, large-cap AI exposure
-                # Add more symbols as needed
-            ]
-
-        if self.email_config is None:
-            self.email_config = EmailConfig()
-
-
 class MarketHoursChecker:
     """Check if the market is open considering holidays and weekends"""
-
+    
     def __init__(self, market_tz: str = "US/Eastern", local_tz: str = "Africa/Kampala"):
         self.market_tz = pytz.timezone(market_tz)
         self.local_tz = pytz.timezone(local_tz)
-
+        
         # Common US market holidays (simplified)
         self.holidays_2024 = [
             "2024-01-01",  # New Year's Day
@@ -3526,7 +3392,7 @@ class MarketHoursChecker:
             "2024-11-28",  # Thanksgiving
             "2024-12-25",  # Christmas
         ]
-
+        
         self.holidays_2025 = [
             "2025-01-01",  # New Year's Day
             "2025-01-20",  # Martin Luther King Jr. Day
@@ -3539,311 +3405,296 @@ class MarketHoursChecker:
             "2025-11-27",  # Thanksgiving
             "2025-12-25",  # Christmas
         ]
-
+    
     def is_market_open(self) -> bool:
         """Check if the US stock market is currently open"""
         now_utc = datetime.now(pytz.UTC)
         market_time = now_utc.astimezone(self.market_tz)
-
+        
         # Check if it's a weekend
         if market_time.weekday() >= 5:  # Saturday = 5, Sunday = 6
             return False
-
+        
         # Check if it's a holiday
         market_date = market_time.date().strftime("%Y-%m-%d")
         if market_date in self.holidays_2024 + self.holidays_2025:
             return False
-
+        
         # Check market hours (9:30 AM - 4:00 PM EST)
         market_hour = market_time.hour
         market_minute = market_time.minute
-
+        
         # Market opens at 9:30 AM
         if market_hour < 9 or (market_hour == 9 and market_minute < 30):
             return False
-
+        
         # Market closes at 4:00 PM
         if market_hour >= 16:
             return False
-
+        
         return True
-
+    
     def get_next_market_open(self) -> datetime:
         """Get the next time the market will be open"""
         now_utc = datetime.now(pytz.UTC)
         market_time = now_utc.astimezone(self.market_tz)
-
+        
         # Start checking from the next day if market is closed today
         check_date = market_time.date()
         if market_time.hour >= 16:  # After market close
             check_date += timedelta(days=1)
-
+        
         # Find the next market day
         while True:
             # Skip weekends
             if check_date.weekday() >= 5:
                 check_date += timedelta(days=1)
                 continue
-
+            
             # Skip holidays
-            if (
-                check_date.strftime("%Y-%m-%d")
-                in self.holidays_2024 + self.holidays_2025
-            ):
+            if check_date.strftime("%Y-%m-%d") in self.holidays_2024 + self.holidays_2025:
                 check_date += timedelta(days=1)
                 continue
-
+            
             break
-
+        
         # Set to 9:30 AM market time
         next_open = self.market_tz.localize(
             datetime.combine(check_date, datetime.min.time().replace(hour=9, minute=30))
         )
-
+        
         return next_open
-
+    
     def time_until_market_open(self) -> timedelta:
         """Get time remaining until market opens"""
         if self.is_market_open():
             return timedelta(0)
-
+        
         next_open = self.get_next_market_open()
         now_utc = datetime.now(pytz.UTC)
-
+        
         return next_open - now_utc
-
 
 class XeniaCLI:
     """Command Line Interface for Xenia Trading System"""
-
+    
     def __init__(self):
         self.config = TradingConfig()
         self.config_file = Path("xenia_config.json")
         self.market_checker = MarketHoursChecker()
         self.running = False
         self.email_service = EmailNotificationService(self.config.email_config)
-
+        
     def load_config(self) -> None:
         """Load configuration from file"""
         if self.config_file.exists():
             try:
-                with open(self.config_file, "r") as f:
+                with open(self.config_file, 'r') as f:
                     config_data = json.load(f)
-
+                    
                     # Handle email config separately
-                    if "email_config" in config_data:
-                        email_data = config_data.pop("email_config")
+                    if 'email_config' in config_data:
+                        email_data = config_data.pop('email_config')
                         self.config.email_config = EmailConfig(**email_data)
-
+                    
                     for key, value in config_data.items():
                         if hasattr(self.config, key):
                             setattr(self.config, key, value)
-
+                
                 # Update email service with new config
                 self.email_service = EmailNotificationService(self.config.email_config)
                 logger.info("Configuration loaded successfully")
             except Exception as e:
                 logger.error(f"Error loading config: {e}")
-                self.email_service.send_error_notification(
-                    str(e), "Loading configuration"
-                )
+                self.email_service.send_error_notification(str(e), "Loading configuration")
         else:
             self.save_config()
-
+    
     def save_config(self) -> None:
         """Save configuration to file"""
         try:
             config_dict = asdict(self.config)
-            with open(self.config_file, "w") as f:
+            with open(self.config_file, 'w') as f:
                 json.dump(config_dict, f, indent=2)
             logger.info("Configuration saved successfully")
         except Exception as e:
             logger.error(f"Error saving config: {e}")
             self.email_service.send_error_notification(str(e), "Saving configuration")
-
+    
     def show_status(self) -> None:
         """Display current system status"""
         print("\n" + "=" * 60)
         print("XENIA TRADING SYSTEM STATUS")
         print("=" * 60)
-
+        
         market_open = self.market_checker.is_market_open()
         print(f"Market Status: {'🟢 OPEN' if market_open else '🔴 CLOSED'}")
-
+        
         if not market_open:
             time_until = self.market_checker.time_until_market_open()
             print(f"Next Market Open: {time_until}")
-
-        print(
-            f"Live Trading: {'🟢 ENABLED' if self.config.live_trading else '🔴 DISABLED'}"
-        )
-        print(
-            f"Monte Carlo: {'🟢 ENABLED' if self.config.enable_monte_carlo else '🔴 DISABLED'}"
-        )
-        print(
-            f"Email Notifications: {'🟢 ENABLED' if self.config.email_config.enabled else '🔴 DISABLED'}"
-        )
+        
+        print(f"Live Trading: {'🟢 ENABLED' if self.config.live_trading else '🔴 DISABLED'}")
+        print(f"Monte Carlo: {'🟢 ENABLED' if self.config.enable_monte_carlo else '🔴 DISABLED'}")
+        print(f"Email Notifications: {'🟢 ENABLED' if self.config.email_config.enabled else '🔴 DISABLED'}")
         print(f"Run Interval: {self.config.run_interval_hours} hours")
         print(f"Symbols: {', '.join(self.config.symbols)}")
         print(f"System Running: {'🟢 YES' if self.running else '🔴 NO'}")
-
+        
         # Show local time
         local_time = datetime.now(pytz.timezone(self.config.local_timezone))
         market_time = datetime.now(pytz.timezone(self.config.market_timezone))
         print(f"\nLocal Time (Uganda): {local_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         print(f"Market Time (EST): {market_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-
+    
     def toggle_live_trading(self) -> None:
         """Toggle live trading on/off"""
         self.config.live_trading = not self.config.live_trading
         status = "ENABLED" if self.config.live_trading else "DISABLED"
         print(f"Live Trading: {status}")
         self.save_config()
-
+    
     def toggle_monte_carlo(self) -> None:
         """Toggle Monte Carlo analysis on/off"""
         self.config.enable_monte_carlo = not self.config.enable_monte_carlo
         status = "ENABLED" if self.config.enable_monte_carlo else "DISABLED"
         print(f"Monte Carlo Analysis: {status}")
         self.save_config()
-
+    
     def toggle_email_notifications(self) -> None:
         """Toggle email notifications on/off"""
         self.config.email_config.enabled = not self.config.email_config.enabled
         status = "ENABLED" if self.config.email_config.enabled else "DISABLED"
         print(f"Email Notifications: {status}")
         self.save_config()
-
+    
     def configure_email(self, sender_email: str, sender_password: str) -> None:
         """Configure email credentials"""
         self.config.email_config.sender_email = sender_email
         self.config.email_config.sender_password = sender_password
         print("Email credentials configured")
         self.save_config()
-
+        
         # Update email service
         self.email_service = EmailNotificationService(self.config.email_config)
-
+        
         # Send test email
         self.email_service.send_email(
             "Email Configuration Test",
             "Email notifications have been successfully configured for Xenia Trading System.",
-            "<h2>✅ Email Configuration Test</h2><p>Email notifications have been successfully configured for Xenia Trading System.</p>",
+            "<h2>✅ Email Configuration Test</h2><p>Email notifications have been successfully configured for Xenia Trading System.</p>"
         )
-
+    
     def set_interval(self, hours: int) -> None:
         """Set run interval in hours"""
         if hours < 1:
             print("Error: Interval must be at least 1 hour")
             return
-
+        
         self.config.run_interval_hours = hours
         print(f"Run interval set to: {hours} hours")
         self.save_config()
-
+    
     def configure_api(self, api_key: str, api_secret: str) -> None:
         """Configure API credentials"""
         self.config.api_key = api_key
         self.config.api_secret = api_secret
         print("API credentials configured")
         self.save_config()
-
+    
     async def run_trading_cycle(self) -> None:
         """Execute one complete trading cycle"""
         try:
             print("\n" + "=" * 60)
-            print(
-                f"STARTING TRADING CYCLE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            print(f"STARTING TRADING CYCLE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print("=" * 60)
-
+            
             self.email_service.add_event("CYCLE_START", "Starting trading cycle")
-
+            
             # Check if market is open
             if not self.market_checker.is_market_open():
                 print("Market is closed. Skipping trading cycle.")
-                self.email_service.add_event(
-                    "MARKET_CLOSED", "Market is closed, skipping cycle"
-                )
+                self.email_service.add_event("MARKET_CLOSED", "Market is closed, skipping cycle")
                 return
 
+            self.config.symbols = [
+                "NVDA", "MSFT", "AMD", "AVGO", "MRVL",
+                "AAPL", "TSLA", "IBM",
+                "PFE", "JNJ", 
+                "PLTR", "LMT", "WMT", "CVX"
+            ]
+
+            
             # Import your trading system modules here
             # from your_trading_system import create_default_system, create_default_trader, DataFetcherConfig
-
+            
             # Create custom data fetcher configs
             custom_data_configs = {}
             for symbol in self.config.symbols:
-                custom_data_configs[symbol] = DataFetcherConfig(
-                    symbol=symbol, period="1y"
-                )
-
+                custom_data_configs[symbol] = DataFetcherConfig(symbol=symbol, period='10y')
+                
+            
             # Create system using default factory
             system = create_default_system(
                 self.config.symbols,
                 initial_balance=self.config.initial_balance,
-                custom_data_configs=custom_data_configs,
+                custom_data_configs=custom_data_configs
             )
-
+            
             # Create trader if live trading is enabled
             trader = None
-            if (
-                self.config.live_trading
-                and self.config.api_key
-                and self.config.api_secret
-            ):
-                trader = create_default_trader(
-                    self.config.api_key, self.config.api_secret
-                )
+            if self.config.live_trading and self.config.api_key and self.config.api_secret:
+                trader = create_default_trader(self.config.api_key, self.config.api_secret)
 
+            start = datetime(2019, 1, 1)
+            end = datetime(2021, 1, 1)
+            
             # Run backtest
             print("Running backtest...")
             await system.run_backtest()
-
+            
             # Run professional analysis if enabled
             if self.config.enable_monte_carlo:
                 print("Running Monte Carlo analysis...")
                 system.run_professional_analysis(
                     num_monte_carlo=self.config.monte_carlo_simulations,
-                    forecast_days=self.config.forecast_days,
+                    forecast_days=self.config.forecast_days
                 )
-
+            
             # Show current signals
             print("\n" + "=" * 60)
             print("CURRENT SIGNALS")
             print("=" * 60)
-
+            
             live_signals = {}
             signals = system.get_current_signals()
-
+          
             for symbol, signal_data in signals.items():
-                if signal_data["recommendation"] != "HOLD":
-                    live_signals[symbol] = [
-                        signal_data["recommendation"],
-                        signal_data["price"],
-                    ]
+                if signal_data['recommendation'] != 'HOLD':
+                    live_signals[symbol] = [signal_data['recommendation'], signal_data['price']]
                 print(
                     f"{symbol}: {signal_data['recommendation']} | "
                     f"Signal: {signal_data['combined_signal']:.3f} | "
                     f"Confidence: {signal_data['confidence']:.3f} | "
                     f"Price: ${signal_data['price']:.2f}"
                 )
-
+            
             # Send signal notifications
             if signals:
                 self.email_service.send_signal_notification(signals)
-
+            
             # Show portfolio status
             print("\n" + "=" * 60)
             print("PORTFOLIO STATUS")
             print("=" * 60)
-
+            
             portfolio = system.get_portfolio_status()
-
+            
             if portfolio:
                 print(f"Cash: ${portfolio['cash']:.2f}")
                 print(f"Total Value: ${portfolio['total_value']:.2f}")
                 print(f"Total Return: {portfolio['total_return']:.2f}%")
-
+                
                 if portfolio.get("positions"):
                     print("\nPositions:")
                     for symbol, position in portfolio["positions"].items():
@@ -3851,68 +3702,64 @@ class XeniaCLI:
                             f"{symbol}: {position['shares']:.2f} shares @ "
                             f"${position['current_price']:.2f} = ${position['value']:.2f}"
                         )
-
+            
             # Execute live trades if enabled
             executed_trades = {}
             if self.config.live_trading and trader and live_signals:
                 print("\n" + "=" * 60)
                 print("EXECUTING LIVE TRADES")
                 print("=" * 60)
-
+                
                 account_info = trader.get_account_info()
-
+                
                 if account_info:
                     for symbol, (signal, price) in live_signals.items():
-                        quantity = (
-                            account_info["buying_power"] * self.config.risk_per_trade
-                        ) / price
-
+                        quantity = (account_info['buying_power'] * self.config.risk_per_trade) / price
+                        
                         print(f"Executing {signal} for {symbol}: {quantity:.2f} shares")
-
+                        
                         trader.execute_signal(
                             signal,
                             symbol,
-                            quantity=(quantity if signal.upper() == "BUY" else None),
+                            quantity=(quantity if signal.upper() == 'BUY' else None)
                         )
-
+                        
                         executed_trades[symbol] = (signal, price)
                         time.sleep(1)  # Rate limiting
-
+            
             # Send trade notifications
             if executed_trades:
                 self.email_service.send_trade_notification(executed_trades)
-
+            
             # Send daily summary
             self.email_service.send_daily_summary(portfolio)
-
+            
             print("\n" + "=" * 60)
             print("TRADING CYCLE COMPLETED")
             print("=" * 60)
-
-            self.email_service.add_event(
-                "CYCLE_COMPLETE", "Trading cycle completed successfully"
-            )
-
+            
+            self.email_service.add_event("CYCLE_COMPLETE", "Trading cycle completed successfully")
+            
         except Exception as e:
             logger.error(f"Error in trading cycle: {e}")
             print(f"Error in trading cycle: {e}")
             self.email_service.send_error_notification(str(e), "Trading cycle")
-
+    
     async def start_system(self) -> None:
         """Start the automated trading system"""
         if self.running:
             print("System is already running!")
             return
-
+        
         self.running = True
         print("Starting Xenia Trading System...")
         print("Press Ctrl+C to stop the system")
-
+        
         # Send startup notification
         self.email_service.send_email(
             "🚀 System Started",
             "Xenia Trading System has been started successfully.",
-            "<h2>🚀 System Started</h2><p>Xenia Trading System has been started successfully.</p>",
+            "<h2>🚀 System Started</h2><p>Xenia Trading System has been started successfully.</p>"
         )
 
         try:
@@ -3920,58 +3767,51 @@ class XeniaCLI:
                 # Check if market is open
                 if self.market_checker.is_market_open():
                     await self.run_trading_cycle()
-
+                    
                     # Wait for the specified interval
                     wait_seconds = self.config.run_interval_hours * 3600
-                    print(
-                        f"\nWaiting {self.config.run_interval_hours} hours until next cycle..."
-                    )
-
+                    print(f"\nWaiting {self.config.run_interval_hours} hours until next cycle...")
+                    
                     for remaining in range(wait_seconds, 0, -1):
                         if not self.running:
                             break
-
+                        
                         hours = remaining // 3600
                         minutes = (remaining % 3600) // 60
                         seconds = remaining % 60
-
-                        print(
-                            f"\rNext cycle in: {hours:02d}:{minutes:02d}:{seconds:02d}",
-                            end="",
-                        )
+                        
+                        print(f"\rNext cycle in: {hours:02d}:{minutes:02d}:{seconds:02d}", end="")
                         await asyncio.sleep(1)
-
+                    
                     print()  # New line after countdown
                 else:
                     # Market is closed, wait until it opens with countdown
                     time_until_open = self.market_checker.time_until_market_open()
                     print(f"Market is closed. Waiting until market opens...")
-
+                    
                     # Convert to total seconds for countdown
                     wait_seconds = int(time_until_open.total_seconds())
-
+                    
                     for remaining in range(wait_seconds, 0, -1):
                         if not self.running:
                             break
-
+                        
                         # Calculate days, hours, minutes, seconds
                         days = remaining // 86400
                         hours = (remaining % 86400) // 3600
                         minutes = (remaining % 3600) // 60
                         seconds = remaining % 60
-
+                        
                         # Format countdown display
                         if days > 0:
-                            countdown_str = (
-                                f"{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
-                            )
+                            countdown_str = f"{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
                         else:
                             countdown_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
+                        
                         print(f"\rMarket opens in: {countdown_str}", end="")
                         await asyncio.sleep(1)
-
-                    print()  # New line after countdown
+                    
+                    print()  # New line after countdown               
         except KeyboardInterrupt:
             print("\nShutting down system...")
         finally:
@@ -3980,44 +3820,44 @@ class XeniaCLI:
             self.email_service.send_email(
                 "⏹️ System Stopped",
                 "Xenia Trading System has been stopped.",
-                "<h2>⏹️ System Stopped</h2><p>Xenia Trading System has been stopped.</p>",
+                "<h2>⏹️ System Stopped</h2><p>Xenia Trading System has been stopped.</p>"
             )
-
+    
     def stop_system(self) -> None:
         """Stop the automated trading system"""
         if not self.running:
             print("System is not running!")
             return
-
+        
         self.running = False
         print("Stopping system...")
-
+    
     def interactive_mode(self) -> None:
         """Interactive command mode"""
         print("\n🚀 Welcome to Xenia Trading System CLI")
         print("Type 'help' for available commands")
-
+        
         while True:
             try:
                 command = input("\nxenia> ").strip().lower()
-
-                if command == "help":
+                
+                if command == 'help':
                     self.show_help()
-                elif command == "status":
+                elif command == 'status':
                     self.show_status()
-                elif command == "toggle-live":
+                elif command == 'toggle-live':
                     self.toggle_live_trading()
-                elif command == "toggle-monte":
+                elif command == 'toggle-monte':
                     self.toggle_monte_carlo()
-                elif command == "toggle-email":
+                elif command == 'toggle-email':
                     self.toggle_email_notifications()
-                elif command.startswith("interval "):
+                elif command.startswith('interval '):
                     try:
                         hours = int(command.split()[1])
                         self.set_interval(hours)
                     except (IndexError, ValueError):
                         print("Usage: interval <hours>")
-                elif command.startswith("email-config "):
+                elif command.startswith('email-config '):
                     try:
                         parts = command.split()
                         if len(parts) >= 3:
@@ -4025,53 +3865,48 @@ class XeniaCLI:
                             sender_password = parts[2]
                             self.configure_email(sender_email, sender_password)
                         else:
-                            print(
-                                "Usage: email-config <sender_email> <sender_password>"
-                            )
+                            print("Usage: email-config <sender_email> <sender_password>")
                     except (IndexError, ValueError):
                         print("Usage: email-config <sender_email> <sender_password>")
-                elif command == "test-email":
+                elif command == 'test-email':
                     self.test_email()
-                elif command == "start":
+                elif command == 'start':
                     asyncio.run(self.start_system())
-                elif command == "stop":
+                elif command == 'stop':
                     self.stop_system()
-                elif command == "run-once":
+                elif command == 'run-once':
                     asyncio.run(self.run_trading_cycle())
-                elif command == "config":
+                elif command == 'config':
                     self.show_config()
-                elif command in ["exit", "quit", "q"]:
+                elif command in ['exit', 'quit', 'q']:
                     print("Goodbye!")
                     break
                 else:
                     print("Unknown command. Type 'help' for available commands.")
-
+                    
             except KeyboardInterrupt:
                 print("\nUse 'exit' to quit")
             except Exception as e:
                 print(f"Error: {e}")
                 self.email_service.send_error_notification(str(e), "Interactive mode")
-
+    
     def test_email(self) -> None:
         """Send a test email"""
-        if (
-            not self.config.email_config.sender_email
-            or not self.config.email_config.sender_password
-        ):
+        if not self.config.email_config.sender_email or not self.config.email_config.sender_password:
             print("Email not configured. Use 'email-config' command first.")
             return
-
+        
         success = self.email_service.send_email(
             "Test Email",
             "This is a test email from Xenia Trading System.",
-            "<h2>📧 Test Email</h2><p>This is a test email from Xenia Trading System.</p><p>If you receive this, email notifications are working correctly!</p>",
+            "<h2>📧 Test Email</h2><p>This is a test email from Xenia Trading System.</p><p>If you receive this, email notifications are working correctly!</p>"
         )
-
+        
         if success:
             print("✅ Test email sent successfully!")
         else:
             print("❌ Failed to send test email. Check your email configuration.")
-
+    
     def show_help(self) -> None:
         """Show help information"""
         print("\n📋 Available Commands:")
@@ -4088,7 +3923,7 @@ class XeniaCLI:
         print("  run-once          - Run one trading cycle immediately")
         print("  config            - Show current configuration")
         print("  exit/quit/q       - Exit the program")
-
+    
     def show_config(self) -> None:
         """Show current configuration"""
         print("\n⚙️  Current Configuration:")
@@ -4103,80 +3938,108 @@ class XeniaCLI:
         print(f"  API Key: {'***' if self.config.api_key else 'Not set'}")
         print(f"\n📧 Email Configuration:")
         print(f"  Enabled: {self.config.email_config.enabled}")
-        print(
-            f"  Sender Email: {'***' if self.config.email_config.sender_email else 'Not set'}"
-        )
+        print(f"  Sender Email: {'***' if self.config.email_config.sender_email else 'Not set'}")
         print(f"  Recipient: {self.config.email_config.recipient_email}")
         print(f"  Send Signals: {self.config.email_config.send_on_signals}")
         print(f"  Send Trades: {self.config.email_config.send_on_trades}")
         print(f"  Send Errors: {self.config.email_config.send_on_errors}")
         print(f"  Daily Summary: {self.config.email_config.send_daily_summary}")
 
-
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
         description="Xenia Trading System CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
-
-    parser.add_argument("--live", action="store_true", help="Enable live trading mode")
-
+    
     parser.add_argument(
-        "--monte-carlo", action="store_true", help="Enable Monte Carlo analysis"
+        '--live', 
+        action='store_true',
+        help='Enable live trading mode'
     )
-
+    
     parser.add_argument(
-        "--interval", type=int, default=24, help="Run interval in hours (default: 24)"
+        '--monte-carlo',
+        action='store_true',
+        help='Enable Monte Carlo analysis'
     )
-
-    parser.add_argument("--api-key", type=str, help="API key for live trading")
-
-    parser.add_argument("--api-secret", type=str, help="API secret for live trading")
-
-    parser.add_argument("--email-sender", type=str, help="Email sender address")
-
-    parser.add_argument("--email-password", type=str, help="Email sender password")
-
+    
     parser.add_argument(
-        "--disable-email", action="store_true", help="Disable email notifications"
+        '--interval',
+        type=int,
+        default=24,
+        help='Run interval in hours (default: 24)'
     )
-
+    
     parser.add_argument(
-        "--run-once", action="store_true", help="Run one trading cycle and exit"
+        '--api-key',
+        type=str,
+        help='API key for live trading'
     )
-
+    
     parser.add_argument(
-        "--start", action="store_true", help="Start the automated trading system"
+        '--api-secret',
+        type=str,
+        help='API secret for live trading'
     )
-
+    
+    parser.add_argument(
+        '--email-sender',
+        type=str,
+        help='Email sender address'
+    )
+    
+    parser.add_argument(
+        '--email-password',
+        type=str,
+        help='Email sender password'
+    )
+    
+    parser.add_argument(
+        '--disable-email',
+        action='store_true',
+        help='Disable email notifications'
+    )
+    
+    parser.add_argument(
+        '--run-once',
+        action='store_true',
+        help='Run one trading cycle and exit'
+    )
+    
+    parser.add_argument(
+        '--start',
+        action='store_true',
+        help='Start the automated trading system'
+    )
+    
     args = parser.parse_args()
-
+    
     # Create CLI instance
     cli = XeniaCLI()
     cli.load_config()
-
+    
     # Apply command line arguments
     if args.live:
         cli.config.live_trading = True
-
+    
     if args.monte_carlo:
         cli.config.enable_monte_carlo = True
-
+    
     if args.interval:
         cli.config.run_interval_hours = args.interval
-
+    
     if args.api_key and args.api_secret:
         cli.configure_api(args.api_key, args.api_secret)
-
+    
     if args.email_sender and args.email_password:
         cli.configure_email(args.email_sender, args.email_password)
-
+    
     if args.disable_email:
         cli.config.email_config.enabled = False
-
+    
     cli.save_config()
-
+    
     # Execute based on arguments
     if args.run_once:
         asyncio.run(cli.run_trading_cycle())
@@ -4185,7 +4048,6 @@ def main():
     else:
         # Enter interactive mode
         cli.interactive_mode()
-
 
 if __name__ == "__main__":
     main()
