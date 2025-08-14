@@ -29,6 +29,7 @@ import ta
 
 from datastream.yfinance_ohlcv import YFinanceOHLCVFetcher as DatastreamFetcher
 from alpaca_markets import AlpacaTrader
+from sp500 import sp500_tickers
 
 warnings.filterwarnings("ignore")
 
@@ -3617,13 +3618,7 @@ class XeniaCLI:
                 self.email_service.add_event("MARKET_CLOSED", "Market is closed, skipping cycle")
                 return
 
-            self.config.symbols = [
-                "NVDA", "MSFT", "AMD", "AVGO", "MRVL",
-                "AAPL", "TSLA", "IBM",
-                "PFE", "JNJ", 
-                "PLTR", "LMT", "WMT", "CVX"
-            ]
-
+            self.config.symbols = sp500_tickers
             
             # Import your trading system modules here
             # from your_trading_system import create_default_system, create_default_trader, DataFetcherConfig
@@ -3649,17 +3644,19 @@ class XeniaCLI:
             start = datetime(2019, 1, 1)
             end = datetime(2021, 1, 1)
             
+            # >>> Removed the monte-carlo and the backtest <<<
+            
             # Run backtest
-            print("Running backtest...")
-            await system.run_backtest()
+            # print("Running backtest...")
+            # await system.run_backtest()
             
             # Run professional analysis if enabled
-            if self.config.enable_monte_carlo:
-                print("Running Monte Carlo analysis...")
-                system.run_professional_analysis(
-                    num_monte_carlo=self.config.monte_carlo_simulations,
-                    forecast_days=self.config.forecast_days
-                )
+            # if self.config.enable_monte_carlo:
+            #     print("Running Monte Carlo analysis...")
+            #     system.run_professional_analysis(
+            #         num_monte_carlo=self.config.monte_carlo_simulations,
+            #         forecast_days=self.config.forecast_days
+            #     )
             
             # Show current signals
             print("\n" + "=" * 60)
