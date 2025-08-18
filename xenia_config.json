@@ -6,7 +6,7 @@
   "confidence_threshold": 0.5,
   "max_position_size": 0.2,
   "min_fetch_interval": 1.0,
-  "live_trading": true,
+  "live_trading": false,
   "enable_monte_carlo": false,
   "monte_carlo_simulations": 10000,
   "forecast_days": 252,
