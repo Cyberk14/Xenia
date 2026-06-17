@@ -1,0 +1,54 @@
+html, body {
+    height: 100vh;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.dash-options-list-option,
+.dash-dropdown-option {
+    color: #FFFFFF !important;
+    font-family: 'Courier New' !important;
+}
+
+/* Focused/hovered option — Radix UI uses data-highlighted */
+.dash-options-list-option[data-highlighted],
+.dash-dropdown-option[data-highlighted] {
+    color: white !important;
+    background-color: rgba(243, 159, 65, 0.2) !important;
+}
+
+#stock_drop {
+    --Dash-Fill-Interactive-Strong: #F39F41;
+    --Dash-Stroke-Strong: #F39F41;
+    --Dash-Stroke-Weak: #F39F41;
+    --Dash-Text-Primary: #F39F41;
+    --Dash-Text-Strong: #F39F41;
+    --Dash-Text-Weak: #F39F41;
+    --Dash-Fill-Primary-Hover: rgba(243, 159, 65, 0.1);
+    --Dash-Fill-Primary-Active: rgba(243, 159, 65, 0.2);
+}
+
+@keyframes ticker-scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-33.33%); }
+}
+
+.news-ticker-content {
+    display: inline-block;
+    animation: ticker-scroll 45s linear infinite;
+    white-space: nowrap;
+}
+
+.news-ticker-content:hover {
+    animation-play-state: paused;
+}
+
+/* Menu portal lives outside #stock_drop so needs root override */
+:root {
+    --Dash-Fill-Inverse-Strong: black;
+    --Dash-Text-Primary: #F39F41;
+    --Dash-Text-Strong: #F39F41;
+    --Dash-Text-Weak: #F39F41;
+    --Dash-Fill-Interactive-Strong: #F39F41;
+}
