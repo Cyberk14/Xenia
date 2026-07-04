@@ -199,9 +199,9 @@ def _mt5_send(symbol, direction, volume, sl=0.0, tp=0.0,
               order_type='market', limit_price=0.0):
     try:
         import MetaTrader5 as mt5
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5.symbol_info(symbol)
         if not tick:
-            return False, f'Symbol {symbol} not found in MT5'
+            mt5.symbol_select(symbol, True)
 
         is_buy = direction == 'buy'
         type_fill = _get_filling_type(symbol)  # ← ERR 10030 fix
@@ -1076,7 +1076,6 @@ def render_watchlist(watchlist):
             style=dict(color=GREY, fontSize='0.6vw',
                        letterSpacing='2px', padding='1vh 1vw'))
     return [_watchlist_row(t) for t in watchlist]
-
 
 if __name__ == '__main__':
     app.run(debug=False)   # debug=False — MT5 is not thread-safe
